@@ -192,8 +192,32 @@ body[data-full] .ed-body{max-width:960px;width:100%;margin:0 auto}
 .readonly #tableBar{display:none}
 #editor figure{margin:8px 0}
 #editor pre{white-space:pre-wrap;background:var(--sel);padding:8px 10px;border-radius:6px;font-size:13px}
-#editor mark{background:#fff0a0;color:inherit;border-radius:2px}
-@media (prefers-color-scheme: dark){#editor mark{background:rgba(224,176,78,.35)}}
+#editor mark{background:#fff0a0;color:inherit;border-radius:2px;padding:0 1px}
+#editor mark.hl-g{background:#c6ecd4}#editor mark.hl-p{background:#ffd3e1}
+#editor .cmt{background:rgba(255,196,0,.16);border-bottom:2px dotted #d99a00;cursor:pointer}
+#editor .cmt.flash{animation:cflash 1.2s}
+@keyframes cflash{0%,60%{background:rgba(255,196,0,.6)}}
+@media (prefers-color-scheme: dark){
+  #editor mark{background:rgba(224,176,78,.38)}#editor mark.hl-g{background:rgba(95,184,152,.35)}#editor mark.hl-p{background:rgba(230,110,150,.35)}
+  #editor .cmt{background:rgba(255,196,0,.14);border-bottom-color:#e0b04e}
+}
+#editor table.tsel{outline:3px solid var(--accent);outline-offset:2px}
+#cmtPop{position:absolute;z-index:7;width:min(320px,calc(100% - 12px));background:var(--panel);border:1px solid var(--line);border-left:4px solid #d99a00;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px 12px;font-size:14px}
+#cmtPop[hidden]{display:none}
+#cmtPop .ct{white-space:pre-wrap;line-height:1.6;word-break:break-word}
+#cmtPop .cm{font-size:11.5px;color:var(--mute);margin-top:6px}
+#cmtPop .row{display:flex;gap:4px;justify-content:flex-end;margin-top:6px}
+#cmtPop button{font-size:13px;padding:4px 10px;border-radius:7px;color:var(--fg)}
+#cmtPop button:hover{background:var(--sel)}#cmtPop button.danger{color:var(--danger)}
+#cmtBtn{position:relative;font-size:16px}
+#cmtBtn .badge{position:absolute;top:2px;right:0;min-width:16px;height:16px;border-radius:8px;background:#d99a00;color:#fff;font-size:10.5px;line-height:16px;padding:0 4px}
+#cmtText{width:100%;min-height:110px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;font-size:14px;resize:vertical}
+.cmt-quote{font-size:13px;color:var(--mute);border-left:3px solid #d99a00;padding:2px 8px;margin:0;max-height:4.5em;overflow:hidden}
+#cmtList{list-style:none;margin:0;padding:0;max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:8px}
+#cmtList li{border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer}
+#cmtList li:hover{background:var(--sel)}
+#cmtList .q{font-size:12.5px;color:var(--mute);border-left:3px solid #d99a00;padding-left:8px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cmtList .c{font-size:14px;white-space:pre-wrap;word-break:break-word}
 #editor a.att{display:inline-block;background:var(--sel);border:1px solid var(--line);border-radius:7px;padding:2px 10px;color:var(--fg);text-decoration:none;font-size:14px;cursor:pointer;margin:2px 0}
 .readonly .toolbar{display:none}
 
@@ -275,6 +299,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <select id="nbSelect" aria-label="ノートブック"></select>
         <span class="spacer"></span>
         <span id="saveState" class="save-state"></span>
+        <button class="icon-btn" id="cmtBtn" title="コメント一覧" aria-label="コメント一覧" hidden>💬<span class="badge" id="cmtCount"></span></button>
         <button class="icon-btn" id="pinBtn" aria-label="ピン留め" title="ピン留め"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg></button>
         <button class="icon-btn text" id="restoreBtn" hidden>復元</button>
         <button class="icon-btn danger" id="deleteBtn" aria-label="削除">🗑</button>
@@ -293,6 +318,9 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button data-cmd="ul" title="箇条書き">•≡</button>
         <button data-cmd="ol" title="番号付き">1≡</button>
         <button data-cmd="quote" title="引用">❝</button>
+        <span class="sep"></span>
+        <button data-cmd="hl" title="ハイライト">🖍 ハイライト</button>
+        <button data-cmd="cmt" title="選択した文字にコメント">💬 コメント</button>
         <button data-cmd="table" title="表を挿入">▦ 表</button>
         <span class="sep"></span>
         <button data-cmd="attach" title="画像・ファイルを添付">📎 添付</button>
@@ -306,6 +334,9 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button data-t="header">見出し行</button>
         <button data-t="delRow" class="danger">−行</button>
         <button data-t="delCol" class="danger">−列</button>
+        <button data-t="selTable">表を選択</button>
+        <button data-t="copyTable">表をコピー</button>
+        <button data-t="dupTable">表を複製</button>
         <button data-t="delTable" class="danger">表を削除</button>
         <span class="sep"></span>
         <span class="lbl">色：</span>
@@ -329,6 +360,8 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
           <button data-w="0">元のサイズ</button><button data-w="del" class="danger">削除</button>
         </div>
         <div id="imgHandle" hidden title="ドラッグで大きさを変更"></div>
+        <div id="cmtPop" hidden><div class="ct" id="cmtPopText"></div><div class="cm" id="cmtPopMeta"></div>
+          <div class="row"><button type="button" id="cmtPopEdit">編集</button><button type="button" id="cmtPopDel" class="danger">削除</button><button type="button" id="cmtPopClose">閉じる</button></div></div>
       </div>
       <input type="file" id="fileInput" multiple hidden>
     </div>
@@ -367,6 +400,21 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <input type="file" id="importInput" hidden>
     <div class="row end"><button value="close">閉じる</button></div>
   </form>
+</dialog>
+<dialog id="cmtDlg">
+  <form method="dialog" class="dlg" id="cmtForm">
+    <h3 id="cmtDlgTitle">コメントを追加</h3>
+    <p class="cmt-quote" id="cmtQuote"></p>
+    <textarea id="cmtText" placeholder="コメントを入力"></textarea>
+    <div class="row end"><button value="cancel" type="button" id="cmtCancel">キャンセル</button><button value="ok" class="primary" id="cmtOk">保存</button></div>
+  </form>
+</dialog>
+<dialog id="cmtListDlg">
+  <div class="dlg">
+    <h3>このノートのコメント</h3>
+    <ul id="cmtList"></ul>
+    <div class="row end"><button type="button" id="cmtListClose">閉じる</button></div>
+  </div>
 </dialog>
 <dialog id="histDlg">
   <div class="dlg">
@@ -408,7 +456,7 @@ const isNarrow = () => matchMedia('(max-width:899px)').matches;
 
 const ALLOWED = new Set(['P','DIV','BR','B','STRONG','I','EM','U','S','STRIKE','DEL','MARK','SUB','SUP','H1','H2','H3','H4','H5','H6','TABLE','THEAD','TBODY','TR','TD','TH','FIGURE','FIGCAPTION','UL','OL','LI','A','IMG','BLOCKQUOTE','PRE','CODE','HR','SPAN']);
 const DROP = new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','LINK','META','TEMPLATE','FORM','INPUT','BUTTON','TEXTAREA','SELECT','svg','SVG','math','MATH']);
-const CLASSES = new Set(['check','done','att','cell-dark','cell-light']);
+const CLASSES = new Set(['check','done','att','cell-dark','cell-light','hl-g','hl-p','cmt']);
 function sanitize(html){
   const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
   (function walk(node){
@@ -423,6 +471,7 @@ function sanitize(html){
           c.length ? el.setAttribute('class', c.join(' ')) : el.removeAttribute('class');
         } else if (n === 'data-att' || n === 'data-name' || n === 'alt') {
         } else if (n === 'data-w' && el.tagName === 'IMG' && /^\d{1,3}$/.test(a.value)) {
+        } else if ((n === 'data-c' || n === 'data-cid' || n === 'data-ct') && el.tagName === 'SPAN') {
         } else if (n === 'contenteditable' && el.tagName === 'A') {
         } else if (n === 'href' && /^https?:/i.test(a.value)) {
         } else if (n === 'src' && el.tagName === 'IMG' && !el.hasAttribute('data-att') && /^https?:/i.test(a.value)) {
@@ -436,6 +485,8 @@ function sanitize(html){
 function htmlToText(html){
   const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
   doc.body.querySelectorAll('p,div,li,h1,h2,h3,h4,h5,h6,br,blockquote,pre,td,th').forEach(e => e.append(' '));
+  // コメントの内容も検索できるように
+  const seen = new Set(); doc.body.querySelectorAll('span[data-c]').forEach(e => { if (!seen.has(e.dataset.cid)) { seen.add(e.dataset.cid); e.append(' ' + e.dataset.c + ' '); } });
   return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 }
 const parseTags = s => [...new Set(String(s).split(/[,，、]/).map(t => t.trim()).filter(Boolean))];
@@ -798,7 +849,7 @@ async function flushSave(){ if (saveTimer) { clearTimeout(saveTimer); saveTimer 
 function editorHTML(){
   const c = editorEl.cloneNode(true);
   c.querySelectorAll('img[data-att]').forEach(i => { i.removeAttribute('src'); i.classList.remove('missing'); i.removeAttribute('class'); });
-  c.querySelectorAll('.cur,.sel').forEach(x => { x.classList.remove('cur', 'sel'); if (!x.className) x.removeAttribute('class'); });
+  c.querySelectorAll('.cur,.sel,.tsel,.flash').forEach(x => { x.classList.remove('cur', 'sel', 'tsel', 'flash'); if (!x.className) x.removeAttribute('class'); });
   c.querySelectorAll('img').forEach(i => i.removeAttribute('style'));
   return c.innerHTML;
 }
@@ -838,7 +889,7 @@ function loadIntoEditor(n){
   $('#deleteBtn').title = ro ? '完全に削除' : 'ゴミ箱へ';
   renderNbSelect(n); updateSaveState(n);
   deselectImage(); applyImgSizes(editorEl); hydrate(editorEl);
-  histInit(n);
+  histInit(n); hideCmtPop(); updateCmtBtn();
 }
 async function openNote(id, {push = true} = {}){
   histBefore();
@@ -1008,6 +1059,12 @@ function tableOp(op){
       target = row.cells[Math.max(0, ci - 1)]; break;
     }
     case 'delTable': return deleteTable(table);
+    case 'selTable': { selectTable(table); return; }
+    case 'copyTable': { copyTable(table); return; }
+    case 'dupTable': {
+      const c = cleanTableClone(table); table.after(c);
+      onEdit('表の複製'); placeCaret(c.rows[0].cells[0], true); toast('すぐ下に表を複製しました'); return;
+    }
   }
   if (target) placeCaret(target, true);
   onEdit(TABLE_LABEL[op] || '表の編集'); updateTableBar();
@@ -1046,6 +1103,8 @@ $('#toolbar').addEventListener('click', e => {
   if (b.dataset.cmd === 'redo') { redo(); return; }
   if (b.dataset.cmd === 'hist') { openHistory(); return; }
   if (b.dataset.cmd === 'attach') { $('#fileInput').click(); return; }
+  if (b.dataset.cmd === 'hl') { restoreRange(); highlightMenu(); return; }
+  if (b.dataset.cmd === 'cmt') { restoreRange(); addComment(); return; }
   histBefore();
   restoreRange();
   if (b.dataset.cmd === 'h') { headingMenu(); return; }
@@ -1196,6 +1255,8 @@ editorEl.addEventListener('click', e => {
 editorEl.addEventListener('paste', async e => {
   const files = [...(e.clipboardData?.files || [])];
   if (files.length) { e.preventDefault(); for (const f of files) await insertAttachment(f); return; }
+  const html = e.clipboardData?.getData('text/html') || '';
+  if (/<table[\s>]/i.test(html)) { e.preventDefault(); histBefore(); pasteTables(html); return; }
   const text = e.clipboardData?.getData('text/plain');
   if (text != null) { e.preventDefault(); histBefore(); document.execCommand('insertText', false, text); onEdit('貼り付け'); }
 });
@@ -1383,7 +1444,7 @@ function renderSettings(){
   info.push(`ノート ${[...S.notes.values()].filter(n => !n.deleted).length} 件`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.19-10';
+const APP_VERSION = '2026.10.20-1';
 function openSettings(){
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
 $('#cidInput').addEventListener('change', e => { localStorage.setItem('nb.clientId', e.target.value.trim()); updateChip(); });
@@ -1690,6 +1751,7 @@ function applyState(st){
     S.editTags = st.tags.slice(); closeTagInput(false); renderTagChips();
     curCell = null; applyImgSizes(editorEl); hydrate(editorEl); updateTableBar();
     if (st.caret != null) { editorEl.focus(); setCaretOffset(st.caret); }
+    hideCmtPop(); updateCmtBtn();
     onEdit();
   } finally { S.histApplying = false; }
   updateHistUI();
@@ -1834,6 +1896,199 @@ async function checkForUpdate(){
 $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
 if (location.search.includes('v=')) history.replaceState(null, '', location.pathname + location.hash);
+
+/* ---------------- 表のコピー・貼り付け ---------------- */
+function cleanTableClone(table){
+  const c = table.cloneNode(true);
+  c.classList.remove('tsel'); if (!c.className) c.removeAttribute('class');
+  c.querySelectorAll('.cur').forEach(x => { x.classList.remove('cur'); if (!x.className) x.removeAttribute('class'); });
+  c.querySelectorAll('img').forEach(i => { i.removeAttribute('style'); i.classList.remove('sel', 'missing'); if (!i.className) i.removeAttribute('class'); });
+  return c;
+}
+function selectTable(table){
+  editorEl.focus();
+  const r = document.createRange(); r.selectNode(table);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  table.classList.add('tsel');
+  toast('表全体を選択しました（Ctrl+C / 長押しでコピーできます）');
+}
+document.addEventListener('selectionchange', () => {
+  editorEl.querySelectorAll('table.tsel').forEach(t => {
+    const s = getSelection();
+    if (!s.rangeCount || !s.getRangeAt(0).intersectsNode(t) || s.isCollapsed) { t.classList.remove('tsel'); if (!t.className) t.removeAttribute('class'); }
+  });
+});
+async function copyTable(table){
+  const c = cleanTableClone(table);
+  const html = c.outerHTML;
+  const tsv = [...table.rows].map(r => [...r.cells].map(x => x.innerText.replace(/[\t\n]+/g, ' ').trim()).join('\t')).join('\n');
+  try {
+    await navigator.clipboard.write([new ClipboardItem({'text/html': new Blob([html], {type: 'text/html'}), 'text/plain': new Blob([tsv], {type: 'text/plain'})})]);
+    toast('表をコピーしました。貼り付けたい場所で貼り付けてください');
+  } catch {
+    selectTable(table);
+    const ok = document.execCommand('copy');
+    toast(ok ? '表をコピーしました' : 'コピーできませんでした。表を選択した状態で端末のコピー操作をしてください');
+  }
+}
+function pasteTables(html){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const tables = [...doc.querySelectorAll('table')].filter(t => !t.parentElement.closest('table'));
+  if (!tables.length) return;
+  const frag = sanitize(tables.map(t => t.outerHTML).join('<p><br></p>'));
+  const cell = closestInEditor('td,th');
+  if (cell) {   // 表の中では入れ子にせず、今の表のすぐ下に貼る
+    const holder = document.createElement('div'); holder.innerHTML = frag + '<p><br></p>';
+    const anchor = cell.closest('table'); const nodes = [...holder.childNodes];
+    anchor.after(...nodes);
+    const first = nodes.find(n => n.tagName === 'TABLE'); if (first) placeCaret(first.rows[0].cells[0], true);
+  } else {
+    document.execCommand('insertHTML', false, frag + '<p><br></p>');
+  }
+  applyImgSizes(editorEl); hydrate(editorEl);
+  onEdit(tables.length > 1 ? `表の貼り付け（${tables.length}個）` : '表の貼り付け');
+}
+
+/* ---------------- 選択範囲を包む（ハイライト・コメント共通） ---------------- */
+const normColor = c => { const d = document.createElement('i'); d.style.backgroundColor = c; return d.style.backgroundColor; };
+function wrapSelection(sentinel, make){
+  const target = normColor(sentinel);
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand('hiliteColor', false, sentinel);
+  document.execCommand('styleWithCSS', false, false);
+  const out = [];
+  editorEl.querySelectorAll('[style]').forEach(el => {
+    if (el.style.backgroundColor !== target) return;
+    const n = make();
+    if (el.tagName === 'SPAN' && el.style.length === 1) { n.append(...el.childNodes); el.replaceWith(n); }
+    else { el.style.backgroundColor = ''; if (!el.getAttribute('style')) el.removeAttribute('style'); n.append(...el.childNodes); el.append(n); }
+    out.push(n);
+  });
+  return out;
+}
+const unwrap = el => el.replaceWith(...el.childNodes);
+function selectionInEditor(){
+  const s = getSelection();
+  return s.rangeCount && editorEl.contains(s.getRangeAt(0).commonAncestorContainer) ? s.getRangeAt(0) : null;
+}
+
+/* ---------------- ハイライト ---------------- */
+const HL = [{k: 'y', label: '🟨 黄色', cls: ''}, {k: 'g', label: '🟩 緑', cls: 'hl-g'}, {k: 'p', label: '🟥 ピンク', cls: 'hl-p'}];
+async function highlightMenu(){
+  const r = selectionInEditor();
+  const inMark = r && (r.collapsed ? closestInEditor('mark') : [...editorEl.querySelectorAll('mark')].some(m => r.intersectsNode(m)));
+  if (!r || (r.collapsed && !inMark)) { toast('ハイライトする文字を選択してください'); return; }
+  const saved = r.cloneRange();
+  const items = r.collapsed ? [] : HL.map(x => ({k: x.k, label: x.label}));
+  if (inMark) items.push({k: 'x', label: 'ハイライトを消す', danger: true});
+  const k = await showMenu(items);
+  editorEl.focus(); const s = getSelection(); s.removeAllRanges(); s.addRange(saved);
+  if (!k) return;
+  histBefore();
+  if (k === 'x') {
+    const marks = saved.collapsed ? [closestInEditor('mark')].filter(Boolean) : [...editorEl.querySelectorAll('mark')].filter(m => saved.intersectsNode(m));
+    marks.forEach(unwrap); onEdit('ハイライトを消す'); return;
+  }
+  const hl = HL.find(x => x.k === k);
+  const made = wrapSelection('rgb(1, 2, 3)', () => { const m = document.createElement('mark'); if (hl.cls) m.className = hl.cls; return m; });
+  made.forEach(m => m.querySelectorAll('mark').forEach(unwrap));   // 重ねがけは新しい色に置き換え
+  made.forEach(m => { const p = m.parentElement; if (p && p.tagName === 'MARK' && p.childNodes.length === 1) unwrap(p); });
+  editorEl.normalize();
+  onEdit('ハイライト（' + hl.label.slice(3) + '）');
+}
+
+/* ---------------- コメント ---------------- */
+let cmtCurrent = null;   // 表示中のコメントの cid
+const cmtSpans = cid => [...editorEl.querySelectorAll(`span.cmt[data-cid="${CSS.escape(cid)}"]`)];
+function cmtQuoteText(cid){ return cmtSpans(cid).map(s => s.textContent).join(' … ').trim(); }
+function askComment(title, quote, value){
+  return new Promise(res => {
+    const d = $('#cmtDlg'); $('#cmtDlgTitle').textContent = title;
+    $('#cmtQuote').textContent = quote ? '「' + quote.slice(0, 120) + (quote.length > 120 ? '…' : '') + '」' : '';
+    $('#cmtText').value = value || '';
+    const done = v => { d.onclose = null; d.close(); res(v); };
+    $('#cmtCancel').onclick = () => done(null);
+    $('#cmtForm').onsubmit = e => { e.preventDefault(); done($('#cmtText').value.trim()); };
+    d.onclose = () => res(null);
+    d.showModal(); setTimeout(() => $('#cmtText').focus(), 50);
+  });
+}
+async function addComment(){
+  const r = selectionInEditor();
+  if (!r || r.collapsed || !r.toString().trim()) { toast('コメントを付ける文字を選択してください'); return; }
+  const saved = r.cloneRange(), quote = r.toString().trim();
+  const text = await askComment('コメントを追加', quote, '');
+  editorEl.focus(); const s = getSelection(); s.removeAllRanges(); s.addRange(saved);
+  if (!text) return;
+  histBefore();
+  const cid = 'c' + now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const made = wrapSelection('rgb(1, 2, 4)', () => {
+    const sp = document.createElement('span'); sp.className = 'cmt'; sp.dataset.cid = cid; sp.dataset.c = text; sp.dataset.ct = String(now()); return sp;
+  });
+  if (!made.length) { toast('コメントを付けられませんでした'); return; }
+  getSelection().collapseToEnd();
+  onEdit('コメントを追加'); updateCmtBtn();
+}
+function showCmtPop(span){
+  const cid = span.dataset.cid; cmtCurrent = cid;
+  $('#cmtPopText').textContent = span.dataset.c || '';
+  const t = Number(span.dataset.ct);
+  $('#cmtPopMeta').textContent = t ? new Date(t).toLocaleString('ja-JP', {year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '';
+  const ro = !editorEl.isContentEditable;
+  $('#cmtPopEdit').hidden = ro; $('#cmtPopDel').hidden = ro;
+  const pop = $('#cmtPop'), body = $('#editorWrap .ed-body');
+  pop.hidden = false;
+  const br = body.getBoundingClientRect(), r = span.getBoundingClientRect();
+  const left = Math.max(6, Math.min(r.left - br.left + body.scrollLeft, body.clientWidth - pop.offsetWidth - 6));
+  pop.style.left = left + 'px'; pop.style.top = (r.bottom - br.top + body.scrollTop + 6) + 'px';
+}
+function hideCmtPop(){ $('#cmtPop').hidden = true; cmtCurrent = null; }
+function updateCmtBtn(){
+  const ids = new Set([...editorEl.querySelectorAll('span.cmt[data-cid]')].map(s => s.dataset.cid));
+  $('#cmtBtn').hidden = !ids.size; $('#cmtCount').textContent = ids.size || '';
+}
+$('#cmtPopClose').addEventListener('click', hideCmtPop);
+$('#cmtPopEdit').addEventListener('click', async () => {
+  const cid = cmtCurrent; if (!cid) return; const spans = cmtSpans(cid); if (!spans.length) return;
+  hideCmtPop();
+  const text = await askComment('コメントを編集', cmtQuoteText(cid), spans[0].dataset.c);
+  if (text == null) return;
+  histBefore();
+  if (!text) { spans.forEach(unwrap); onEdit('コメントを削除'); }
+  else { spans.forEach(s => { s.dataset.c = text; }); onEdit('コメントを編集'); }
+  updateCmtBtn();
+});
+$('#cmtPopDel').addEventListener('click', () => {
+  const cid = cmtCurrent; if (!cid) return;
+  if (!confirm('このコメントを削除しますか？（本文はそのまま残ります）')) return;
+  histBefore(); cmtSpans(cid).forEach(unwrap); editorEl.normalize(); hideCmtPop(); onEdit('コメントを削除'); updateCmtBtn();
+});
+editorEl.addEventListener('click', e => {
+  const sp = e.target.closest('span.cmt');
+  if (sp && getSelection().isCollapsed) showCmtPop(sp); else if (!e.target.closest('#cmtPop')) hideCmtPop();
+});
+document.addEventListener('pointerdown', e => {
+  if (!$('#cmtPop').hidden && !e.target.closest('#cmtPop') && !e.target.closest('span.cmt')) hideCmtPop();
+}, true);
+function openCmtList(){
+  const groups = new Map();
+  editorEl.querySelectorAll('span.cmt[data-cid]').forEach(s => { if (!groups.has(s.dataset.cid)) groups.set(s.dataset.cid, s); });
+  $('#cmtList').innerHTML = [...groups.values()].map(s =>
+    `<li data-cid="${esc(s.dataset.cid)}"><div class="q">${esc(cmtQuoteText(s.dataset.cid))}</div><div class="c">${esc(s.dataset.c || '')}</div></li>`).join('')
+    || '<li style="cursor:default">コメントはありません</li>';
+  $('#cmtListDlg').showModal();
+}
+$('#cmtBtn').addEventListener('click', openCmtList);
+$('#cmtListClose').addEventListener('click', () => $('#cmtListDlg').close());
+$('#cmtListDlg').addEventListener('click', e => { if (e.target === $('#cmtListDlg')) $('#cmtListDlg').close(); });
+$('#cmtList').addEventListener('click', e => {
+  const li = e.target.closest('li[data-cid]'); if (!li) return;
+  $('#cmtListDlg').close();
+  const spans = cmtSpans(li.dataset.cid); if (!spans.length) return;
+  spans[0].scrollIntoView({block: 'center', behavior: 'smooth'});
+  spans.forEach(s => { s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash'); setTimeout(() => s.classList.remove('flash'), 1300); });
+  setTimeout(() => showCmtPop(spans[0]), 450);
+});
 
 /* ---------------- boot ---------------- */
 (async () => {
