@@ -1,6 +1,6 @@
 // オフライン用：アプリ本体をキャッシュ（Googleへの通信はキャッシュしない）
 const CACHE = 'notebox-v4';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
+const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './maskable-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
