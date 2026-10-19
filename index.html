@@ -266,14 +266,36 @@ body.dragging-note,body.dragging-note *{cursor:grabbing!important;user-select:no
 #exportInfo:empty{display:none}
 @media print{
   body.printing #sidebar,body.printing #listPane,body.printing .split,body.printing .ed-head,body.printing .toolbar,body.printing #tableBar,body.printing #findBar,
-  body.printing #imgBar,body.printing #imgHandle,body.printing #cmtPop,body.printing #linkPop,body.printing #backlinks,body.printing #toast,body.printing #banner,body.printing .tag-add{display:none!important}
+  body.printing #imgBar,body.printing #imgHandle,body.printing #cmtPop,body.printing #linkPop,body.printing #backlinks,body.printing #toast,body.printing #banner,body.printing .tag-add,body.printing #emptyEditor,body.printing #tagInput{display:none!important}
+  body.printing #title{border:0}
   body.printing #app{display:block;height:auto}
-  body.printing #editorPane,body.printing #editorWrap,body.printing .ed-body{display:block!important;overflow:visible;height:auto;padding:0}
-  body.printing{background:#fff;color:#000}
+  body.printing #editorPane,body.printing #editorWrap:not([hidden]),body.printing .ed-body{display:block!important;overflow:visible;height:auto;padding:0}
+  body.printing{background:#fff;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.printing *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @page{margin:16mm 14mm}
   body.printing #title{font-size:20pt}
   body.printing #editor{min-height:0}
+  body.printing #editor table{width:calc(100% - 2px)}
   body.printing #editor .cmt{background:none;border-bottom:1px dotted #999}
 }
+#vertView{position:fixed;inset:0;z-index:45;background:#fbfaf6;color:#222;display:flex;flex-direction:column}
+#vertView[hidden]{display:none}
+@media (prefers-color-scheme: dark){#vertView{background:#16181a;color:#e7e3d8}}
+#vertView .vbar{display:flex;align-items:center;gap:6px;padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top));border-bottom:1px solid rgba(128,128,128,.25)}
+#vertView .vbar b{flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#vertView .vbar button{height:32px;padding:0 10px;border-radius:8px;font-size:13px;color:inherit;border:1px solid rgba(128,128,128,.3)}
+#vertBody{flex:1;overflow-x:auto;overflow-y:hidden;writing-mode:vertical-rl;padding:28px 32px;line-height:1.9;font-size:var(--vfs,18px);
+  font-family:"Yu Mincho","YuMincho","Hiragino Mincho ProN","Noto Serif JP","Noto Serif CJK JP",serif;text-orientation:mixed;letter-spacing:.04em}
+#vertBody.gothic{font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif}
+#vertBody p{margin:0 0 0 .2em}
+#vertBody h1,#vertBody h2,#vertBody h3,#vertBody h4{margin:0 1.2em 0 .8em;font-size:1.15em}
+#vertBody h1.vtitle{font-size:1.4em;margin-left:2em}
+#vertBody img{max-height:70%;max-width:none;writing-mode:horizontal-tb;margin:0 .6em}
+#vertBody .tcy{text-combine-upright:all;-webkit-text-combine:horizontal}
+#vertBody table{writing-mode:horizontal-tb;border-collapse:collapse;font-size:.75em;align-self:flex-start;margin:0 1em}
+#vertBody td,#vertBody th{border:1px solid rgba(128,128,128,.5);padding:3px 6px}
+#vertBody mark{background:#fff0a0;color:inherit}#vertBody .cmt{background:none}#vertBody a{color:inherit;text-decoration:none}
+#vertBody ul,#vertBody ol{margin:0 1em 0 0;padding:0 1.4em 0 0}
 #cmtPop{position:absolute;z-index:7;width:min(320px,calc(100% - 12px));background:var(--panel);border:1px solid var(--line);border-left:4px solid #d99a00;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px 12px;font-size:14px}
 #cmtPop[hidden]{display:none}
 #cmtPop .ct{white-space:pre-wrap;line-height:1.6;word-break:break-word}
@@ -464,6 +486,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 <div id="scrim"></div>
 <div id="toast"></div>
 <div id="dragGhost" hidden></div>
+<div id="vertView" hidden>
+  <div class="vbar"><b id="vertTitle"></b><button type="button" id="vertFont">ゴシック</button><button type="button" data-fs="-1">A−</button><button type="button" data-fs="1">A＋</button><button type="button" id="vertClose">閉じる</button></div>
+  <div id="vertBody"></div>
+</div>
 <div id="banner" hidden><span id="bannerText"></span><button class="primary" id="bannerAct"></button><button id="bannerClose" aria-label="閉じる">✕</button></div>
 
 <dialog id="settings">
@@ -478,6 +504,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       <button type="button" id="disconnectBtn">接続解除</button>
     </div>
     <p id="syncInfo" class="hint"></p>
+    <label style="flex-direction:row;align-items:center;gap:8px;color:var(--fg)"><input type="checkbox" id="autoReconn"> 接続が切れたら、次に画面を触ったときに自動で再接続する</label>
     <p class="hint" id="appVer"></p>
     <div class="row"><button type="button" id="forceUpdateBtn">最新版に更新</button></div>
     <h4>バックアップと書き出し</h4>
@@ -710,13 +737,16 @@ async function signIn(){
   if (!cid) { openSettings(); throw new Error('クライアントIDが未設定です'); }
   await loadGis();
   return new Promise((res, rej) => {
+    const hint = localStorage.getItem('nb.email') || undefined;
     const tc = google.accounts.oauth2.initTokenClient({
-      client_id: cid, scope: SCOPE,
+      client_id: cid, scope: SCOPE, ...(hint ? {login_hint: hint} : {}),
       callback: r => {
         if (r.error) return rej(new Error('ログイン失敗: ' + r.error));
         S.token = r.access_token; S.tokenExp = now() + (Number(r.expires_in || 3600) - 60) * 1000;
         localStorage.setItem('nb.token', JSON.stringify({t: S.token, e: S.tokenExp}));
         localStorage.setItem('nb.signedIn', '1');
+        if (!localStorage.getItem('nb.email'))   // 次回からアカウント選択を省くため
+          gjson(`${API}/about?fields=user(emailAddress)`).then(a => { if (a?.user?.emailAddress) localStorage.setItem('nb.email', a.user.emailAddress); }).catch(() => {});
         res();
       },
       error_callback: e => rej(new Error(e?.type === 'popup_closed' ? 'ログインがキャンセルされました'
@@ -728,7 +758,7 @@ async function signIn(){
 function signOut(){
   if (S.token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(S.token, () => {});
   S.token = null; S.tokenExp = 0;
-  localStorage.removeItem('nb.token'); localStorage.removeItem('nb.signedIn');
+  localStorage.removeItem('nb.token'); localStorage.removeItem('nb.signedIn'); localStorage.removeItem('nb.email');
   updateChip(); renderSettings();
 }
 
@@ -1633,8 +1663,9 @@ function renderSettings(){
   info.push(`ノート ${[...S.notes.values()].filter(n => !n.deleted).length} 件`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.20-1';
+const APP_VERSION = '2026.10.20-2';
 function openSettings(){
+  $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
 $('#cidInput').addEventListener('change', e => { localStorage.setItem('nb.clientId', e.target.value.trim()); updateChip(); });
 $('#connectBtn').addEventListener('click', async () => {
@@ -2935,6 +2966,52 @@ async function markdownAll(){
 }
 $('#backupBtn').addEventListener('click', backupAll);
 $('#mdAllBtn').addEventListener('click', markdownAll);
+
+/* ---------------- 縦書きで読む ---------------- */
+function openVertical(n){
+  flushSave();
+  const doc = new DOMParser().parseFromString(`<body>${editorHTML()}</body>`, 'text/html');
+  // 半角の1〜2桁の数字・!? は縦中横に
+  const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT); const nodes = []; let x; while ((x = w.nextNode())) if (!x.parentElement.closest('table,pre')) nodes.push(x);
+  for (const t of nodes) {
+    if (!/(?<![0-9A-Za-z])([0-9]{1,2}|!!|!\?|\?\?|!|\?)(?![0-9A-Za-z])/.test(t.data)) continue;
+    const span = doc.createElement('span');
+    span.innerHTML = esc(t.data).replace(/(?<![0-9A-Za-z])([0-9]{1,2}|!!|!\?|\?\?)(?![0-9A-Za-z])/g, '<span class="tcy">$1</span>');
+    t.replaceWith(...span.childNodes);
+  }
+  doc.querySelectorAll('a.att').forEach(a => a.replaceWith(`［添付：${a.dataset.name || ''}］`));
+  $('#vertTitle').textContent = titleEl.value || '無題のノート';
+  const body = $('#vertBody');
+  body.innerHTML = `<h1 class="vtitle">${esc(titleEl.value || '')}</h1>` + doc.body.innerHTML;
+  applyImgSizes(body); body.querySelectorAll('img').forEach(i => { i.style.width = ''; }); hydrate(body);
+  try { body.style.setProperty('--vfs', (Number(localStorage.getItem('nb.vfs')) || 18) + 'px'); body.classList.toggle('gothic', localStorage.getItem('nb.vfont') === 'g'); } catch {}
+  $('#vertFont').textContent = body.classList.contains('gothic') ? '明朝' : 'ゴシック';
+  $('#vertView').hidden = false; body.scrollLeft = 0; body.focus();
+}
+$('#vertClose').addEventListener('click', () => { $('#vertView').hidden = true; });
+$('#vertFont').addEventListener('click', () => {
+  const g = $('#vertBody').classList.toggle('gothic'); $('#vertFont').textContent = g ? '明朝' : 'ゴシック';
+  try { localStorage.setItem('nb.vfont', g ? 'g' : 'm'); } catch {}
+});
+$('#vertView').querySelectorAll('[data-fs]').forEach(b => b.addEventListener('click', () => {
+  const v = Math.max(12, Math.min(32, (Number(localStorage.getItem('nb.vfs')) || 18) + Number(b.dataset.fs) * 2));
+  try { localStorage.setItem('nb.vfs', v); } catch {} $('#vertBody').style.setProperty('--vfs', v + 'px');
+}));
+$('#vertBody').addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); e.currentTarget.scrollLeft -= e.deltaY; } }, {passive: false});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#vertView').hidden) $('#vertView').hidden = true; });
+addMoreItem({k: 'vert', label: '📖 縦書きで読む', run: openVertical});
+
+/* ---------------- Googleへの再接続を減らす ---------------- */
+const autoReconnOn = () => { try { return localStorage.getItem('nb.autoReconn') !== '0'; } catch { return true; } };
+let lastAutoReconn = 0;
+document.addEventListener('pointerup', () => {
+  if (!autoReconnOn() || !navigator.onLine || !clientId() || !localStorage.getItem('nb.signedIn')) return;
+  if (S.token && S.tokenExp - now() > 5 * 60 * 1000) return;          // まだ5分以上ある
+  if (now() - lastAutoReconn < 5 * 60 * 1000 || S.syncing || !window.google?.accounts?.oauth2) return;
+  lastAutoReconn = now();
+  signIn().then(() => { updateChip(); sync(); }).catch(() => {});        // 画面操作の直後なのでポップアップが許可される
+}, true);
+$('#autoReconn').addEventListener('change', e => { try { localStorage.setItem('nb.autoReconn', e.target.checked ? '1' : '0'); } catch {} });
 
 /* ---------------- boot ---------------- */
 (async () => {
