@@ -255,6 +255,25 @@ body.dragging-note,body.dragging-note *{cursor:grabbing!important;user-select:no
 #backlinks h5{margin:0 0 6px;font-size:12px;color:var(--mute);font-weight:600}
 #backlinks button{display:block;text-align:left;padding:5px 8px;border-radius:7px;color:var(--accent);font-size:13.5px}
 #backlinks button:hover{background:var(--accent-soft)}
+#verList{list-style:none;margin:0;padding:0;max-height:34vh;overflow:auto}
+#verList li{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+#verList li:hover{background:var(--sel)}#verList li.on{background:var(--accent-soft);font-weight:600}
+#verList li small{color:var(--mute);font-size:12px}
+#verPrev{border:1px solid var(--line);border-radius:10px;padding:10px 14px;max-height:34vh;overflow:auto;font-size:14px;line-height:1.7}
+#verPrev:empty{display:none}
+#verPrev h4{margin:0 0 6px;font-size:16px}
+#verPrev img{max-width:100%}#verPrev table{border-collapse:collapse}#verPrev td,#verPrev th{border:1px solid var(--line);padding:3px 6px}
+#exportInfo:empty{display:none}
+@media print{
+  body.printing #sidebar,body.printing #listPane,body.printing .split,body.printing .ed-head,body.printing .toolbar,body.printing #tableBar,body.printing #findBar,
+  body.printing #imgBar,body.printing #imgHandle,body.printing #cmtPop,body.printing #linkPop,body.printing #backlinks,body.printing #toast,body.printing #banner,body.printing .tag-add{display:none!important}
+  body.printing #app{display:block;height:auto}
+  body.printing #editorPane,body.printing #editorWrap,body.printing .ed-body{display:block!important;overflow:visible;height:auto;padding:0}
+  body.printing{background:#fff;color:#000}
+  body.printing #title{font-size:20pt}
+  body.printing #editor{min-height:0}
+  body.printing #editor .cmt{background:none;border-bottom:1px dotted #999}
+}
 #cmtPop{position:absolute;z-index:7;width:min(320px,calc(100% - 12px));background:var(--panel);border:1px solid var(--line);border-left:4px solid #d99a00;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px 12px;font-size:14px}
 #cmtPop[hidden]{display:none}
 #cmtPop .ct{white-space:pre-wrap;line-height:1.6;word-break:break-word}
@@ -461,7 +480,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <p id="syncInfo" class="hint"></p>
     <p class="hint" id="appVer"></p>
     <div class="row"><button type="button" id="forceUpdateBtn">最新版に更新</button></div>
-    <div class="row"><button type="button" id="exportBtn">バックアップを書き出す（JSON）</button></div>
+    <h4>バックアップと書き出し</h4>
+    <p class="hint">「バックアップ」は添付ファイルも含めた全ノートのzipで、この画面の「ノートの取り込み」でそのまま戻せます。「Markdown」は他のアプリでも読める形式です。</p>
+    <div class="row"><button type="button" id="backupBtn">全ノートをバックアップ（zip）</button><button type="button" id="mdAllBtn">全ノートをMarkdownで書き出し</button></div>
+    <p id="exportInfo" class="hint"></p>
     <h4>Webクリップ</h4>
     <p class="hint"><b>ブックマークレット</b>：ブラウザのブックマークのURL欄にこれを貼り付けて保存。記事を開いてそのブックマークを選ぶとクリップされます（文章を選択してから使うと選択部分だけ）。</p>
     <textarea id="bmCode" readonly></textarea>
@@ -483,6 +505,15 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <input id="linkQ" type="search" placeholder="ノート名で絞り込み" autocomplete="off">
     <div id="linkList"></div>
     <div class="row end"><button type="button" id="linkClose">閉じる</button></div>
+  </div>
+</dialog>
+<dialog id="verDlg">
+  <div class="dlg">
+    <h3>過去の版</h3>
+    <p class="hint">Googleドライブに残っている保存履歴です（ドライブの仕組みで、古いものは約30日・100件を超えると自動で整理されます）。選ぶと中身を確認できます。</p>
+    <ul id="verList"></ul>
+    <div id="verPrev"></div>
+    <div class="row end"><button type="button" id="verClose">閉じる</button><button type="button" id="verRestore" class="primary" disabled>この版に戻す</button></div>
   </div>
 </dialog>
 <dialog id="tocDlg">
@@ -1612,12 +1643,6 @@ $('#connectBtn').addEventListener('click', async () => {
   if (!S.error && hasToken()) toast('同期しました');
 });
 $('#disconnectBtn').addEventListener('click', () => { signOut(); toast('接続を解除しました（端末内のノートは残ります）'); });
-$('#exportBtn').addEventListener('click', () => {
-  const data = {exportedAt: new Date().toISOString(), notebooks: S.notebooks, notes: [...S.notes.values()].map(serialize)};
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
-  a.download = `notebox-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
-});
 
 /* ---------------- global events ---------------- */
 $('#nav').addEventListener('click', async e => {
@@ -1835,9 +1860,16 @@ async function importPackage(file){
   S.importing = true; updateChip();
   try {
     const nbDef = pkg.notebook || {id: 'import', name: '取り込み'};
+    for (const b of pkg.notebooks || []) {   // バックアップから戻すときはノートブックの構成も戻す
+      const cur = S.notebooks.find(x => x.id === b.id);
+      if (!cur) S.notebooks.push({id: b.id, name: b.name, parentId: b.parentId || null, updated: now(), deleted: false});
+      else if (cur.deleted) { cur.deleted = false; cur.updated = now(); }
+    }
     let nb = S.notebooks.find(b => b.id === nbDef.id);
-    if (!nb) { nb = {id: nbDef.id, name: nbDef.name, updated: now(), deleted: false}; S.notebooks.push(nb); }
-    else if (nb.deleted) { nb.deleted = false; nb.updated = now(); }
+    if (!pkg.notebooks) {
+      if (!nb) { nb = {id: nbDef.id, name: nbDef.name, updated: now(), deleted: false}; S.notebooks.push(nb); }
+      else if (nb.deleted) { nb.deleted = false; nb.updated = now(); }
+    }
     await db.put('kv', S.notebooks, 'notebooks');
     const attInfo = new Map((pkg.attachments || []).map(a => [a.id, a]));
     const attMap = new Map();
@@ -1861,14 +1893,15 @@ async function importPackage(file){
         body = body.split(`data-att="${aid}"`).join(`data-att="${lid}"`);
       }
       const clean = sanitize(body);
-      await storeNote({id: n.id, title: String(n.title || ''), body: clean, text: htmlToText(clean), notebookId: nb.id,
+      const nbId = pkg.notebooks ? (n.notebookId && S.notebooks.some(b => b.id === n.notebookId) ? n.notebookId : null) : nb.id;
+      await storeNote({id: n.id, title: String(n.title || ''), body: clean, text: htmlToText(clean), notebookId: nbId,
         tags: Array.isArray(n.tags) ? n.tags.map(String) : [], created: Number(n.created) || now(), updated: Number(n.updated) || now(),
-        deleted: false, dirty: true, fileId: null, syncedAt: null});
+        pinned: Number(n.pinned) || 0, rev: 0, deleted: false, dirty: true, fileId: null, syncedAt: null});
       added++;
     }
     say(`${added} 件を取り込みました` + (skipped ? `（取り込み済みの ${skipped} 件はスキップ）` : '') + (missing ? `／見つからない添付 ${missing} 件` : '')
       + (added ? '。ドライブへの送信は同期で順に行われます。' : ''));
-    S.filter = {type: 'nb', value: nb.id}; S.query = '';
+    S.filter = nb ? {type: 'nb', value: nb.id} : {type: 'all', value: ''}; S.query = '';
     return added;
   } finally {
     S.importing = false; renderAll();
@@ -2689,6 +2722,219 @@ $('#tplBtn').addEventListener('click', async () => {
   await newNote(S.notes.get(k));
 });
 addMoreItem({k: 'tpl', label: '📋 テンプレートとして保存', run: saveAsTemplate, show: n => !n.deleted && n.notebookId !== TPL_NB});
+
+/* ---------------- 過去の版（ドライブの保存履歴） ---------------- */
+const VER = {list: [], sel: null, data: null};
+async function openVersions(n){
+  if (!n.fileId) { toast('このノートはまだドライブに保存されていません（同期後に使えます）'); return; }
+  if (!navigator.onLine) { toast('オフラインのため保存履歴を取得できません'); return; }
+  if (!hasToken()) { await sync({interactive: true}); if (!hasToken()) return; }
+  await flushSave();
+  $('#verList').innerHTML = '<li style="cursor:default">読み込み中…</li>'; $('#verPrev').innerHTML = ''; $('#verRestore').disabled = true;
+  $('#verDlg').showModal();
+  try {
+    const r = await gjson(`${API}/files/${n.fileId}/revisions?fields=revisions(id,modifiedTime,size)&pageSize=200`);
+    VER.list = (r.revisions || []).reverse(); VER.sel = null; VER.data = null; VER.note = n.id;
+    $('#verList').innerHTML = VER.list.length ? VER.list.map((v, i) => {
+      const d = new Date(v.modifiedTime);
+      return `<li data-i="${i}"><span>${d.toLocaleString('ja-JP', {year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})}${i === 0 ? '（最新）' : ''}</span><small>${v.size ? Math.ceil(v.size / 1024) + 'KB' : ''}</small></li>`;
+    }).join('') : '<li style="cursor:default">保存履歴がありません</li>';
+  } catch (e) { $('#verList').innerHTML = `<li style="cursor:default">取得できませんでした：${esc(e.message)}</li>`; }
+}
+$('#verList').addEventListener('click', async e => {
+  const li = e.target.closest('li[data-i]'); if (!li) return;
+  $('#verList').querySelectorAll('li').forEach(x => x.classList.toggle('on', x === li));
+  const v = VER.list[Number(li.dataset.i)], n = S.notes.get(VER.note); if (!n) return;
+  $('#verPrev').textContent = '読み込み中…'; $('#verRestore').disabled = true;
+  try {
+    const data = await (await gfetch(`${API}/files/${n.fileId}/revisions/${v.id}?alt=media`)).json();
+    VER.data = normalizeNote(data);
+    $('#verPrev').innerHTML = `<h4>${esc(VER.data.title || '無題のノート')}</h4>` + VER.data.body;
+    applyImgSizes($('#verPrev')); hydrate($('#verPrev'));
+    $('#verRestore').disabled = false;
+  } catch (err) { $('#verPrev').textContent = '読み込めませんでした：' + err.message; }
+});
+$('#verRestore').addEventListener('click', () => {
+  const d = VER.data; if (!d || VER.note !== S.currentId) return;
+  $('#verDlg').close();
+  histBefore();
+  editorEl.innerHTML = d.body; titleEl.value = d.title; S.editTags = (d.tags || []).slice(); renderTagChips();
+  applyImgSizes(editorEl); hydrate(editorEl); markBrokenLinks(); updateCmtBtn();
+  onEdit('過去の版に戻す'); toast('過去の版に戻しました（「元に戻す」で取り消せます）');
+});
+$('#verClose').addEventListener('click', () => $('#verDlg').close());
+addMoreItem({k: 'ver', label: '🕰 過去の版（ドライブの保存履歴）', run: openVersions, show: n => !n.deleted});
+
+/* ---------------- 書き出し ---------------- */
+function saveBlob(blob, name){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+const safeName = s => (String(s || '無題').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim() || '無題').slice(0, 80);
+const stamp = () => { const d = new Date(), p = x => String(x).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`; };
+// 添付ファイル名の割り当て（重複しない名前）
+function attNamer(){
+  const used = new Set(), map = new Map();
+  return (id, name) => {
+    if (map.has(id)) return map.get(id);
+    let base = safeName(name || 'file'), n = base, k = 2;
+    while (used.has(n)) { const m = base.match(/^(.*?)(\.[^.]+)?$/); n = `${m[1]} (${k++})${m[2] || ''}`; }
+    used.add(n); map.set(id, n); return n;
+  };
+}
+function htmlToMarkdown(html, attPath){
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  const notes = []; const seenC = new Map();
+  const inline = el => [...el.childNodes].map(c => {
+    if (c.nodeType === 3) return c.data.replace(/\u00a0/g, ' ');
+    if (c.nodeType !== 1) return '';
+    const t = c.tagName, inner = () => inline(c);
+    if (t === 'BR') return '  \n';
+    if (t === 'B' || t === 'STRONG') { const s = inner(); return s.trim() ? `**${s}**` : s; }
+    if (t === 'I' || t === 'EM') { const s = inner(); return s.trim() ? `*${s}*` : s; }
+    if (t === 'S' || t === 'STRIKE' || t === 'DEL') return `~~${inner()}~~`;
+    if (t === 'MARK') return `==${inner()}==`;
+    if (t === 'CODE') return '`' + c.textContent + '`';
+    if (t === 'IMG') { const id = c.dataset.att, src = id ? attPath(id, c.getAttribute('alt')) : c.getAttribute('src'); return src ? `![${c.getAttribute('alt') || ''}](${encodeURI(src)})` : ''; }
+    if (t === 'A' && c.classList.contains('att')) return `[📎 ${c.dataset.name || ''}](${encodeURI(attPath(c.dataset.att, c.dataset.name))})`;
+    if (t === 'A' && c.classList.contains('nlink')) { const n = S.notes.get(c.dataset.note); return `[[${n ? n.title : c.textContent}]]`; }
+    if (t === 'A' && c.getAttribute('href')) return `[${inner()}](${c.getAttribute('href')})`;
+    if (t === 'SPAN' && c.classList.contains('cmt')) {
+      let k = seenC.get(c.dataset.cid); const s = inner();
+      if (!k) { k = notes.length + 1; seenC.set(c.dataset.cid, k); notes.push(c.dataset.c || ''); return `${s}[^${k}]`; }
+      return s;
+    }
+    if (['P', 'DIV', 'LI', 'UL', 'OL', 'TABLE'].includes(t)) return block(c).trim();
+    return inner();
+  }).join('');
+  const cellText = td => inline(td).replace(/\s*\n\s*/g, '<br>').replace(/\|/g, '\\|').trim() || ' ';
+  function list(el, depth){
+    const ordered = el.tagName === 'OL', check = el.classList.contains('check'); let i = Number(el.getAttribute('start')) || 1;
+    return [...el.children].map(li => {
+      if (li.tagName === 'UL' || li.tagName === 'OL') return list(li, depth + 1);
+      const sub = [...li.children].filter(x => x.tagName === 'UL' || x.tagName === 'OL');
+      const clone = li.cloneNode(true); [...clone.children].filter(x => x.tagName === 'UL' || x.tagName === 'OL').forEach(x => x.remove());
+      const mark = check ? (li.classList.contains('done') ? '- [x] ' : '- [ ] ') : ordered ? `${i++}. ` : '- ';
+      return '  '.repeat(depth) + mark + inline(clone).trim().replace(/\n/g, ' ') + (sub.length ? '\n' + sub.map(s => list(s, depth + 1)).join('\n') : '');
+    }).join('\n');
+  }
+  function block(el){
+    const t = el.tagName;
+    if (/^H[1-6]$/.test(t)) return '#'.repeat(Math.min(4, Number(t[1]))) + ' ' + inline(el).trim();
+    if (t === 'UL' || t === 'OL') return list(el, 0);
+    if (t === 'BLOCKQUOTE') return [...el.childNodes].map(c => c.nodeType === 1 ? block(c) : c.data).join('\n').trim().split('\n').map(l => '> ' + l).join('\n');
+    if (t === 'PRE') return '```\n' + el.textContent.replace(/\n$/, '') + '\n```';
+    if (t === 'HR') return '---';
+    if (t === 'TABLE') {
+      const rows = [...el.querySelectorAll('tr')].filter(r => r.closest('table') === el).map(r => [...r.cells].map(cellText));
+      if (!rows.length) return '';
+      const w = Math.max(...rows.map(r => r.length)); rows.forEach(r => { while (r.length < w) r.push(' '); });
+      return [rows[0], Array(w).fill('---'), ...rows.slice(1)].map(r => '| ' + r.join(' | ') + ' |').join('\n');
+    }
+    return inline(el).trim();
+  }
+  const out = [];
+  for (const c of doc.body.childNodes) {
+    if (c.nodeType === 3) { if (c.data.trim()) out.push(c.data.trim()); continue; }
+    if (c.nodeType !== 1) continue;
+    const b = block(c); out.push(b === '' ? '' : b);
+  }
+  let md = out.join('\n\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+  if (notes.length) md += '\n' + notes.map((t, i) => `[^${i + 1}]: ${t.replace(/\n/g, ' ')}`).join('\n') + '\n';
+  return md;
+}
+function attsOf(html){
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html'), m = new Map();
+  doc.querySelectorAll('[data-att]').forEach(e => { if (!m.has(e.dataset.att)) m.set(e.dataset.att, e.dataset.name || e.getAttribute('alt') || 'file'); });
+  return m;
+}
+async function exportNoteMarkdown(n){
+  await flushSave();
+  const atts = attsOf(n.body), namer = attNamer();
+  const md = `# ${n.title || '無題のノート'}\n\n` + ((n.tags || []).length ? n.tags.map(t => '#' + t).join(' ') + '\n\n' : '') + htmlToMarkdown(n.body, (id, name) => 'attachments/' + namer(id, name));
+  if (!atts.size) { saveBlob(new Blob([md], {type: 'text/markdown'}), safeName(n.title) + '.md'); return; }
+  toast('添付ファイルをまとめています…'); await loadJSZip();
+  const zip = new JSZip(); zip.file(safeName(n.title) + '.md', md);
+  let miss = 0;
+  for (const [id, name] of atts) { const b = await getAttBlob(id).catch(() => null); if (b) zip.file('attachments/' + namer(id, name), b, {binary: true}); else miss++; }
+  saveBlob(await zip.generateAsync({type: 'blob'}), safeName(n.title) + '.zip');
+  if (miss) toast(`${miss}件の添付は取得できませんでした（オンラインで再度お試しください）`);
+}
+const blobToDataURL = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
+async function exportNoteWord(n){
+  await flushSave();
+  const doc = new DOMParser().parseFromString(`<body>${n.body}</body>`, 'text/html');
+  for (const img of doc.querySelectorAll('img[data-att]')) {
+    const b = await getAttBlob(img.dataset.att).catch(() => null);
+    if (b) { img.src = await blobToDataURL(b); const w = Number(img.dataset.w); img.style.maxWidth = '100%'; if (w) img.style.width = w + '%'; } else img.replaceWith(`［画像：${img.alt || ''}］`);
+  }
+  doc.querySelectorAll('a.att').forEach(a => a.replaceWith(`［添付：${a.dataset.name || ''}］`));
+  doc.querySelectorAll('a.nlink').forEach(a => a.replaceWith(`［${a.textContent}］`));
+  doc.querySelectorAll('span.cmt').forEach(s => { const c = doc.createElement('span'); c.style.color = '#b07800'; c.textContent = `［コメント：${s.dataset.c}］`; s.after(c); });
+  doc.querySelectorAll('td.cell-dark,th.cell-dark').forEach(c => { c.style.background = '#2f7a63'; c.style.color = '#fff'; });
+  doc.querySelectorAll('td.cell-light,th.cell-light').forEach(c => { c.style.background = '#dcefe6'; });
+  doc.querySelectorAll('ul.check li').forEach(li => li.prepend(li.classList.contains('done') ? '☑ ' : '☐ '));
+  const html = `<html><head><meta charset="utf-8"><title>${esc(n.title)}</title><style>body{font-family:"Yu Mincho","Hiragino Mincho ProN",serif;line-height:1.7}table{border-collapse:collapse}td,th{border:1px solid #999;padding:4px 8px;vertical-align:top}mark{background:#fff0a0}mark.hl-g{background:#c6ecd4}mark.hl-p{background:#ffd3e1}ul.check{list-style:none}</style></head><body><h1>${esc(n.title || '無題のノート')}</h1>${doc.body.innerHTML}</body></html>`;
+  saveBlob(new Blob(['\ufeff', html], {type: 'application/msword'}), safeName(n.title) + '.doc');
+}
+function exportNotePdf(){
+  document.body.classList.add('printing');
+  const done = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done); setTimeout(() => window.print(), 50); setTimeout(done, 60000);
+}
+addMoreItem({k: 'export', label: '📤 書き出す（Word・Markdown・PDF）', run: async n => {
+  const k = await showMenu([{k: 'doc', label: 'Word（.doc）'}, {k: 'md', label: 'Markdown（.md）'}, {k: 'pdf', label: 'PDF（印刷画面から「PDFに保存」）'}]);
+  if (k === 'doc') exportNoteWord(n); else if (k === 'md') exportNoteMarkdown(n); else if (k === 'pdf') exportNotePdf();
+}});
+// 全ノート
+async function collectAllAtts(notes, say){
+  const all = new Map(); notes.forEach(n => attsOf(n.body).forEach((name, id) => { if (!all.has(id)) all.set(id, name); }));
+  const blobs = new Map(); let i = 0, miss = 0;
+  for (const [id, name] of all) { say(`添付ファイルを集めています… ${++i}/${all.size}`); const b = await getAttBlob(id).catch(() => null); if (b) blobs.set(id, {b, name}); else miss++; }
+  return {blobs, miss};
+}
+async function backupAll(){
+  const say = t => { $('#exportInfo').textContent = t; };
+  try {
+    await flushSave(); await loadJSZip();
+    const notes = [...S.notes.values()].filter(n => !n.deleted);
+    const {blobs, miss} = await collectAllAtts(notes, say);
+    say('zipを作成しています…');
+    const zip = new JSZip(), idOf = new Map(); let k = 0; const attList = [];
+    for (const [id, {b, name}] of blobs) { const aid = 'imp-' + (++k), path = `files/${k}_${safeName(name)}`; idOf.set(id, aid); attList.push({id: aid, name, mime: b.type || 'application/octet-stream', path, size: b.size}); zip.file(path, b, {binary: true}); }
+    const pkgNotes = notes.map(n => {
+      let body = n.body; const used = [];
+      for (const [id, aid] of idOf) if (body.includes(`data-att="${id}"`)) { body = body.split(`data-att="${id}"`).join(`data-att="${aid}"`); used.push(aid); }
+      return {id: n.id, title: n.title, body, notebookId: n.notebookId || null, tags: n.tags || [], created: n.created, updated: n.updated, pinned: n.pinned || 0, attachments: used};
+    });
+    zip.file('notes.json', JSON.stringify({format: 'notebox-import', version: 2, source: 'NoteBox backup', exportedAt: new Date().toISOString(),
+      notebooks: S.notebooks.filter(b => !b.deleted).map(b => ({id: b.id, name: b.name, parentId: b.parentId || null})), notes: pkgNotes, attachments: attList}));
+    saveBlob(await zip.generateAsync({type: 'blob'}), `NoteBoxバックアップ_${stamp()}.zip`);
+    say(`${notes.length}件のノートと${blobs.size}件の添付をバックアップしました` + (miss ? `（取得できなかった添付 ${miss}件：オンラインで再実行してください）` : ''));
+  } catch (e) { say('バックアップできませんでした：' + e.message); }
+}
+async function markdownAll(){
+  const say = t => { $('#exportInfo').textContent = t; };
+  try {
+    await flushSave(); await loadJSZip();
+    const notes = [...S.notes.values()].filter(n => !n.deleted);
+    const {blobs, miss} = await collectAllAtts(notes, say);
+    say('zipを作成しています…');
+    const zip = new JSZip(), namer = attNamer(), usedPaths = new Set();
+    for (const [id, {b, name}] of blobs) zip.file('attachments/' + namer(id, name), b, {binary: true});
+    for (const n of notes) {
+      const folder = n.notebookId && nbById(n.notebookId) ? nbPath(n.notebookId).split(' / ').map(safeName).join('/') : '未分類';
+      const up = '../'.repeat(folder.split('/').length);
+      let path = `${folder}/${safeName(n.title)}.md`, k = 2; while (usedPaths.has(path)) path = `${folder}/${safeName(n.title)} (${k++}).md`; usedPaths.add(path);
+      const meta = `---\ntitle: "${(n.title || '').replace(/"/g, '\\"')}"\ncreated: ${new Date(n.created).toISOString()}\nupdated: ${new Date(n.updated).toISOString()}\ntags: [${(n.tags || []).map(t => JSON.stringify(t)).join(', ')}]\n---\n\n`;
+      zip.file(path, meta + `# ${n.title || '無題のノート'}\n\n` + htmlToMarkdown(n.body, (id, name) => up + 'attachments/' + namer(id, name)));
+    }
+    saveBlob(await zip.generateAsync({type: 'blob'}), `NoteBox_Markdown_${stamp()}.zip`);
+    say(`${notes.length}件をMarkdownで書き出しました` + (miss ? `（取得できなかった添付 ${miss}件）` : ''));
+  } catch (e) { say('書き出せませんでした：' + e.message); }
+}
+$('#backupBtn').addEventListener('click', backupAll);
+$('#mdAllBtn').addEventListener('click', markdownAll);
 
 /* ---------------- boot ---------------- */
 (async () => {
