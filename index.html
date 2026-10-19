@@ -350,6 +350,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       <button type="button" id="disconnectBtn">接続解除</button>
     </div>
     <p id="syncInfo" class="hint"></p>
+    <p class="hint" id="appVer"></p>
     <div class="row"><button type="button" id="exportBtn">バックアップを書き出す（JSON）</button></div>
     <h4>Webクリップ</h4>
     <p class="hint"><b>ブックマークレット</b>：ブラウザのブックマークのURL欄にこれを貼り付けて保存。記事を開いてそのブックマークを選ぶとクリップされます（文章を選択してから使うと選択部分だけ）。</p>
@@ -362,7 +363,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <p class="hint">NoteBox用の取り込みファイル（.zip）を選ぶと、中のノートと添付ファイルをまとめて追加します。修正用ファイル（.json）を選ぶと、取り込み済みのノートに反映します。添付が多い場合はPCでの取り込みがおすすめです。同じファイルを2回取り込んでも重複はしません。</p>
     <div class="row"><button type="button" id="importBtn">取り込みファイルを選ぶ</button></div>
     <p id="importInfo" class="hint"></p>
-    <input type="file" id="importInput" accept=".zip,.json,application/zip,application/json" hidden>
+    <input type="file" id="importInput" hidden>
     <div class="row end"><button value="close">閉じる</button></div>
   </form>
 </dialog>
@@ -1381,7 +1382,9 @@ function renderSettings(){
   info.push(`ノート ${[...S.notes.values()].filter(n => !n.deleted).length} 件`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-function openSettings(){ renderSettings(); closeDrawer(); $('#settings').showModal(); }
+const APP_VERSION = '2026.10.19-9';
+function openSettings(){
+  $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
 $('#cidInput').addEventListener('change', e => { localStorage.setItem('nb.clientId', e.target.value.trim()); updateChip(); });
 $('#connectBtn').addEventListener('click', async () => {
   localStorage.setItem('nb.clientId', $('#cidInput').value.trim());
@@ -1571,8 +1574,13 @@ async function applyPatch(pkg){
     + (missing ? `／見つからないノート ${missing} 件` : '');
 }
 async function importPackage(file){
-  if (/\.json$/i.test(file.name) || file.type === 'application/json') {
-    const pkg = JSON.parse(await file.text());
+  // ファイル名や種類ではなく中身で判定（端末によって拡張子や種類が変わるため）
+  const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  const isZip = head[0] === 0x50 && head[1] === 0x4b;
+  if (!isZip) {
+    let pkg;
+    try { pkg = JSON.parse((await file.text()).replace(/^\uFEFF/, '')); }
+    catch { throw new Error('ファイルを読めませんでした（NoteBoxの取り込みファイル .zip または修正ファイル .json を選んでください）'); }
     if (pkg.format !== 'notebox-patch') throw new Error('NoteBoxの修正用ファイルではありません');
     const msg = await applyPatch(pkg);
     $('#importInfo').textContent = msg; toast(msg); return 0;
