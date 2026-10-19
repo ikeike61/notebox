@@ -359,10 +359,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <textarea id="scCode" readonly></textarea>
     <div class="row"><button type="button" data-copy="scCode">コピー</button></div>
     <h4>ノートの取り込み</h4>
-    <p class="hint">NoteBox用の取り込みファイル（.zip）を選ぶと、中のノートと添付ファイルをまとめて追加します。添付が多い場合はPCでの取り込みがおすすめです。同じファイルを2回取り込んでも重複はしません。</p>
+    <p class="hint">NoteBox用の取り込みファイル（.zip）を選ぶと、中のノートと添付ファイルをまとめて追加します。修正用ファイル（.json）を選ぶと、取り込み済みのノートに反映します。添付が多い場合はPCでの取り込みがおすすめです。同じファイルを2回取り込んでも重複はしません。</p>
     <div class="row"><button type="button" id="importBtn">取り込みファイルを選ぶ</button></div>
     <p id="importInfo" class="hint"></p>
-    <input type="file" id="importInput" accept=".zip,application/zip" hidden>
+    <input type="file" id="importInput" accept=".zip,.json,application/zip,application/json" hidden>
     <div class="row end"><button value="close">閉じる</button></div>
   </form>
 </dialog>
@@ -1533,7 +1533,50 @@ function loadJSZip(){
     document.head.appendChild(s);
   });
 }
+// 取り込み済みノートへの修正（表の色など）。編集で表の形が変わっている場合はその表だけ飛ばす
+async function applyPatch(pkg){
+  if (!['table-colors', 'evernote-fix'].includes(pkg.kind)) throw new Error('この修正用ファイルの種類には対応していません');
+  await flushSave(); histBefore();
+  let notesHit = 0, tablesOk = 0, tablesSkip = 0, missing = 0, titled = 0, titleKept = 0;
+  for (const p of pkg.notes || []){
+    const n = S.notes.get(p.id); if (!n) { missing++; continue; }
+    const doc = new DOMParser().parseFromString(`<body>${n.body}</body>`, 'text/html');
+    const ts = [...doc.body.querySelectorAll('table')];
+    let changed = false;
+    // タイトル：取り込み時のまま（未変更）のノートだけ直す
+    if (p.title && p.titleFrom !== undefined) {
+      if (n.title === p.titleFrom) { n.title = p.title; titled++; changed = true; } else if (n.title !== p.title) titleKept++;
+    }
+    (p.tables || []).forEach((grid, k) => {
+      const t = ts[k], rows = t ? [...t.rows] : [];
+      if (!t || rows.length !== grid.length || rows.some((r, i) => r.cells.length !== grid[i].length)) { tablesSkip++; return; }
+      let painted = false;
+      rows.forEach((r, i) => [...r.cells].forEach((c, j) => {
+        const cls = grid[i][j];
+        if (cls && !c.classList.contains('cell-dark') && !c.classList.contains('cell-light')) { c.classList.add(cls); painted = changed = true; }
+      }));
+      if (painted) tablesOk++;
+    });
+    if (changed) {
+      n.body = doc.body.innerHTML; n.text = htmlToText(n.body); n.rev = now(); n.dirty = true;   // 更新日時は変えない
+      if (n.id === S.currentId) titleEl.value = n.title;
+      await storeNote(n); notesHit++;
+      if (n.id === S.currentId) loadIntoEditor(n);
+    }
+  }
+  renderAll(); scheduleSync(1000);
+  return `${notesHit} 件のノートを修正しました（タイトル ${titled} 件・表の色 ${tablesOk} 個）`
+    + (titleKept ? `／名前を変えていたノート ${titleKept} 件のタイトルはそのままにしました` : '')
+    + (tablesSkip ? `／形が変わっていた表 ${tablesSkip} 個はそのままにしました` : '')
+    + (missing ? `／見つからないノート ${missing} 件` : '');
+}
 async function importPackage(file){
+  if (/\.json$/i.test(file.name) || file.type === 'application/json') {
+    const pkg = JSON.parse(await file.text());
+    if (pkg.format !== 'notebox-patch') throw new Error('NoteBoxの修正用ファイルではありません');
+    const msg = await applyPatch(pkg);
+    $('#importInfo').textContent = msg; toast(msg); return 0;
+  }
   const info = $('#importInfo');
   const say = t => { info.textContent = t; };
   say('ファイルを読み込み中…');
