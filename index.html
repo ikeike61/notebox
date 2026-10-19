@@ -106,7 +106,7 @@ input,select{font:inherit;color:inherit}
 #editor h3{font-size:17px}
 #editor h4{font-size:15px;color:var(--mute)}
 #editor h5,#editor h6{font-size:15px;margin:12px 0 4px}
-#editor p{margin:0 0 6px}
+#editor p{margin:0 0 3px}
 #editor blockquote{margin:8px 0;padding:4px 14px;border-left:3px solid var(--accent);color:var(--mute)}
 #editor img{max-width:100%;height:auto;border-radius:8px;display:block;margin:8px 0;background:var(--sel)}
 #editor img.missing{min-height:80px;min-width:160px;border:1px dashed var(--line)}
@@ -131,6 +131,8 @@ input,select{font:inherit;color:inherit}
 .readonly #tableBar{display:none}
 #editor figure{margin:8px 0}
 #editor pre{white-space:pre-wrap;background:var(--sel);padding:8px 10px;border-radius:6px;font-size:13px}
+#editor mark{background:#fff0a0;color:inherit;border-radius:2px}
+@media (prefers-color-scheme: dark){#editor mark{background:rgba(224,176,78,.35)}}
 #editor a.att{display:inline-block;background:var(--sel);border:1px solid var(--line);border-radius:7px;padding:2px 10px;color:var(--fg);text-decoration:none;font-size:14px;cursor:pointer;margin:2px 0}
 .readonly .toolbar{display:none}
 
@@ -268,6 +270,11 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <p class="hint"><b>iPhoneショートカット用</b>：「Webページで JavaScript を実行」アクションに貼り付けます（手順はREADME）。</p>
     <textarea id="scCode" readonly></textarea>
     <div class="row"><button type="button" data-copy="scCode">コピー</button></div>
+    <h4>ノートの取り込み</h4>
+    <p class="hint">NoteBox用の取り込みファイル（.zip）を選ぶと、中のノートと添付ファイルをまとめて追加します。添付が多い場合はPCでの取り込みがおすすめです。同じファイルを2回取り込んでも重複はしません。</p>
+    <div class="row"><button type="button" id="importBtn">取り込みファイルを選ぶ</button></div>
+    <p id="importInfo" class="hint"></p>
+    <input type="file" id="importInput" accept=".zip,application/zip" hidden>
     <div class="row end"><button value="close">閉じる</button></div>
   </form>
 </dialog>
@@ -460,6 +467,18 @@ async function ensureFolders(){
   const att = await findOrCreateFolder('attachments', root);
   f = {root, att}; await db.put('kv', f, 'folders'); return f;
 }
+// 4MBを超えるファイルは分割対応の送信方式（resumable）で送る
+async function uploadResumable(fileId, meta, mime, blob){
+  const url = fileId ? `${UPLOAD}/files/${fileId}?uploadType=resumable&fields=id` : `${UPLOAD}/files?uploadType=resumable&fields=id`;
+  const r = await gfetch(url, {method: fileId ? 'PATCH' : 'POST',
+    headers: {'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime}, body: JSON.stringify(meta)});
+  const loc = r.headers.get('Location');
+  if (!loc) throw new Error('大きなファイルの送信を開始できませんでした');
+  const r2 = await fetch(loc, {method: 'PUT', headers: {'Content-Type': mime}, body: blob});
+  if (r2.status === 401) { S.token = null; localStorage.removeItem('nb.token'); throw new AuthError(); }
+  if (!r2.ok) { const e = new Error(`Drive API ${r2.status}: ${(await r2.text()).slice(0, 160)}`); e.status = r2.status; throw e; }
+  return (await r2.json()).id;
+}
 async function uploadFile({fileId, name, mime, data, parent, appProperties}){
   const meta = {};
   if (appProperties) meta.appProperties = appProperties;
@@ -469,6 +488,7 @@ async function uploadFile({fileId, name, mime, data, parent, appProperties}){
     `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: ${mime}\r\n\r\n`,
     data, `\r\n--${b}--`,
   ]);
+  if (data instanceof Blob && data.size > 4 * 1024 * 1024) return uploadResumable(fileId, meta, mime, data);
   const url = fileId ? `${UPLOAD}/files/${fileId}?uploadType=multipart&fields=id` : `${UPLOAD}/files?uploadType=multipart&fields=id`;
   const r = await gjson(url, {method: fileId ? 'PATCH' : 'POST', headers: {'Content-Type': `multipart/related; boundary=${b}`}, body});
   return r.id;
@@ -491,7 +511,7 @@ async function isGone(fileId){
 let syncTimer;
 function scheduleSync(ms = 3000){ clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(), ms); }
 async function sync({interactive = false} = {}){
-  if (S.syncing) { S.syncAgain = true; return; }
+  if (S.syncing || S.importing) { S.syncAgain = true; return; }
   if (!navigator.onLine) { updateChip(); return; }
   if (!hasToken()) {
     if (!interactive) { updateChip(); return; }
@@ -513,6 +533,7 @@ async function sync({interactive = false} = {}){
   } finally {
     S.syncing = false;
     renderAll(); refreshEditorAfterSync(); renderSettings();
+    S.progress = '';
     if (S.syncAgain) { S.syncAgain = false; scheduleSync(1000); }
   }
 }
@@ -576,8 +597,10 @@ async function syncNotes(f){
   }
 }
 async function uploadPendingAttachments(f){
-  let list = (await db.get('kv', 'pendingAtt')) || [];
-  for (const a of [...list]){
+  const list = (await db.get('kv', 'pendingAtt')) || [];
+  let done = 0;
+  for (const a of list){
+    if (list.length > 3) { S.progress = `添付 ${++done}/${list.length}`; updateChip(); }
     const blob = await db.get('blobs', a.id);
     if (blob) {
       const fid = await uploadFile({name: a.name, mime: a.mime || 'application/octet-stream', data: blob, parent: f.att, appProperties: {kind: 'att'}});
@@ -587,12 +610,12 @@ async function uploadPendingAttachments(f){
       if (open) $('#editor').querySelectorAll(`[data-att="${a.id}"]`).forEach(e => e.dataset.att = fid);
       for (const n of S.notes.values()){
         if (!n.body.includes(a.id)) continue;
-        n.body = n.body.split(a.id).join(fid); n.updated = now(); n.dirty = true;
+        n.body = n.body.split(a.id).join(fid); n.dirty = true;  // 更新日時は変えない
         if (n.id === open) S.loadedUpdated = n.updated;
         await storeNote(n);
       }
     }
-    list = list.filter(x => x.id !== a.id); await db.put('kv', list, 'pendingAtt');
+    const cur = ((await db.get('kv', 'pendingAtt')) || []).filter(x => x.id !== a.id); await db.put('kv', cur, 'pendingAtt');
   }
 }
 async function processPendingTrash(){
@@ -1066,7 +1089,8 @@ function renderList(){
 function updateChip(){
   const chip = $('#syncChip'), pending = [...S.notes.values()].filter(n => n.dirty).length;
   let text, cls;
-  if (S.syncing) { text = '同期中…'; cls = 'busy'; }
+  if (S.importing) { text = '取り込み中…'; cls = 'busy'; }
+  else if (S.syncing) { text = '同期中…' + (S.progress ? ' ' + S.progress : ''); cls = 'busy'; }
   else if (!navigator.onLine) { text = 'オフライン'; cls = ''; }
   else if (!clientId()) { text = '同期の設定をする'; cls = 'warn'; }
   else if (!hasToken()) { text = localStorage.getItem('nb.signedIn') ? 'タップして再接続' : 'Googleに接続'; cls = 'warn'; }
@@ -1228,6 +1252,78 @@ document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click'
   try { await navigator.clipboard.writeText(ta.value); } catch { ta.select(); document.execCommand('copy'); }
   toast('コピーしました');
 }));
+
+/* ---------------- import (Evernote などからの取り込み) ---------------- */
+function loadJSZip(){
+  return new Promise((res, rej) => {
+    if (window.JSZip) return res();
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload = res; s.onerror = () => { s.remove(); rej(new Error('取り込み用の部品を読み込めません（オフライン？）')); };
+    document.head.appendChild(s);
+  });
+}
+async function importPackage(file){
+  const info = $('#importInfo');
+  const say = t => { info.textContent = t; };
+  say('ファイルを読み込み中…');
+  await loadJSZip();
+  const zip = await JSZip.loadAsync(file);
+  const nf = zip.file('notes.json');
+  if (!nf) throw new Error('NoteBoxの取り込み用ファイルではありません');
+  const pkg = JSON.parse(await nf.async('string'));
+  if (pkg.format !== 'notebox-import') throw new Error('NoteBoxの取り込み用ファイルではありません');
+  await flushSave();
+  S.importing = true; updateChip();
+  try {
+    const nbDef = pkg.notebook || {id: 'import', name: '取り込み'};
+    let nb = S.notebooks.find(b => b.id === nbDef.id);
+    if (!nb) { nb = {id: nbDef.id, name: nbDef.name, updated: now(), deleted: false}; S.notebooks.push(nb); }
+    else if (nb.deleted) { nb.deleted = false; nb.updated = now(); }
+    await db.put('kv', S.notebooks, 'notebooks');
+    const attInfo = new Map((pkg.attachments || []).map(a => [a.id, a]));
+    const attMap = new Map();
+    let added = 0, skipped = 0, missing = 0;
+    for (const [i, n] of pkg.notes.entries()){
+      say(`取り込み中… ${i + 1} / ${pkg.notes.length}`);
+      if (S.notes.has(n.id)) { skipped++; continue; }
+      let body = n.body || '';
+      for (const aid of n.attachments || []){
+        let lid = attMap.get(aid);
+        if (!lid) {
+          const a = attInfo.get(aid), f = a && zip.file(a.path);
+          if (!f) { missing++; continue; }
+          const blob = new Blob([await f.async('arraybuffer')], {type: a.mime || 'application/octet-stream'});
+          lid = 'local-' + uid();
+          await db.put('blobs', blob, lid);
+          const pend = (await db.get('kv', 'pendingAtt')) || [];
+          pend.push({id: lid, name: a.name, mime: a.mime}); await db.put('kv', pend, 'pendingAtt');
+          attMap.set(aid, lid);
+        }
+        body = body.split(`data-att="${aid}"`).join(`data-att="${lid}"`);
+      }
+      const clean = sanitize(body);
+      await storeNote({id: n.id, title: String(n.title || ''), body: clean, text: htmlToText(clean), notebookId: nb.id,
+        tags: Array.isArray(n.tags) ? n.tags.map(String) : [], created: Number(n.created) || now(), updated: Number(n.updated) || now(),
+        deleted: false, dirty: true, fileId: null, syncedAt: null});
+      added++;
+    }
+    say(`${added} 件を取り込みました` + (skipped ? `（取り込み済みの ${skipped} 件はスキップ）` : '') + (missing ? `／見つからない添付 ${missing} 件` : '')
+      + (added ? '。ドライブへの送信は同期で順に行われます。' : ''));
+    S.filter = {type: 'nb', value: nb.id}; S.query = '';
+    return added;
+  } finally {
+    S.importing = false; renderAll();
+    if (S.syncAgain) { S.syncAgain = false; }
+    scheduleSync(1000);
+  }
+}
+$('#importBtn').addEventListener('click', () => $('#importInput').click());
+$('#importInput').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { const n = await importPackage(f); if (n) toast(`${n} 件のノートを取り込みました`); }
+  catch (err) { console.error(err); $('#importInfo').textContent = '取り込めませんでした：' + err.message; }
+});
 
 /* ---------------- boot ---------------- */
 (async () => {
