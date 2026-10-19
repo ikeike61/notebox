@@ -220,6 +220,25 @@ body.dragging-note,body.dragging-note *{cursor:grabbing!important;user-select:no
   #editor .cmt{background:rgba(255,196,0,.14);border-bottom-color:#e0b04e}
 }
 #editor table.tsel{outline:3px solid var(--accent);outline-offset:2px}
+#countBtn{font-size:12px;color:var(--mute);padding:4px 8px;border-radius:7px;white-space:nowrap;font-variant-numeric:tabular-nums}
+#countBtn:hover{background:var(--sel);color:var(--fg)}
+#tocList{list-style:none;margin:0;padding:0;max-height:60vh;overflow:auto}
+#tocList li{display:flex;gap:8px;align-items:baseline;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+#tocList li:hover{background:var(--sel)}
+#tocList li .lv{flex:1}#tocList li .cc{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+#tocList li.l1 .lv{font-weight:700}#tocList li.l2 .lv{font-weight:600}
+.toc-sum{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--mute)}.toc-sum b{color:var(--fg);font-size:16px}
+#editor .flash-h{animation:cflash 1.4s;border-radius:4px}
+#findBar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--sel)}
+#findBar[hidden]{display:none}
+#findBar input[type=text]{flex:1;min-width:120px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--fg);font-size:14px}
+#findBar button{height:30px;padding:0 9px;border-radius:7px;font-size:13px;color:var(--fg);white-space:nowrap}
+#findBar button:hover{background:var(--panel)}
+#findBar .cnt{font-size:12px;color:var(--mute);min-width:4.5em;text-align:center;font-variant-numeric:tabular-nums}
+#findBar label{font-size:12.5px;display:flex;align-items:center;gap:4px;white-space:nowrap;color:var(--fg)}
+#findBar .grow{flex-basis:100%;height:0}
+::highlight(nb-find){background:#ffe066;color:inherit}
+::highlight(nb-find-cur){background:#ff9f43;color:#000}
 #cmtPop{position:absolute;z-index:7;width:min(320px,calc(100% - 12px));background:var(--panel);border:1px solid var(--line);border-left:4px solid #d99a00;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px 12px;font-size:14px}
 #cmtPop[hidden]{display:none}
 #cmtPop .ct{white-space:pre-wrap;line-height:1.6;word-break:break-word}
@@ -270,6 +289,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 @media (max-width:899px){
   #app{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:1fr}
     .split,#fullBtn{display:none!important}
+  .save-state{display:none}
+  .ed-head{gap:2px;padding-left:8px;padding-right:8px}
+  .ed-head select{max-width:30vw}
+  .ed-head .icon-btn{min-width:32px;padding:0 5px}
   body[data-full] #sidebar,body[data-full] #listPane{display:flex}
   #sidebar{position:fixed;top:0;bottom:0;left:0;width:min(82vw,300px);z-index:20;transform:translateX(-102%);transition:transform .22s ease;padding-top:calc(14px + env(safe-area-inset-top))}
   body[data-drawer="open"] #sidebar{transform:none}
@@ -318,10 +341,12 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button class="icon-btn mobile-only" id="backBtn" aria-label="戻る">‹</button>
         <select id="nbSelect" aria-label="ノートブック"></select>
         <span class="spacer"></span>
+        <button type="button" id="countBtn" title="目次と文字数"></button>
         <span id="saveState" class="save-state"></span>
         <button class="icon-btn" id="cmtBtn" title="コメント一覧" aria-label="コメント一覧" hidden>💬<span class="badge" id="cmtCount"></span></button>
         <button class="icon-btn" id="pinBtn" aria-label="ピン留め" title="ピン留め"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg></button>
         <button class="icon-btn text" id="restoreBtn" hidden>復元</button>
+        <button class="icon-btn" id="moreBtn" aria-label="その他の操作" title="その他の操作">⋯</button>
         <button class="icon-btn danger" id="deleteBtn" aria-label="削除">🗑</button>
       </header>
       <div class="toolbar" id="toolbar">
@@ -344,6 +369,16 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button data-cmd="table" title="表を挿入">▦ 表</button>
         <span class="sep"></span>
         <button data-cmd="attach" title="画像・ファイルを添付">📎 添付</button>
+      </div>
+      <div id="findBar" hidden>
+        <input type="text" id="findIn" placeholder="検索する語句" autocomplete="off" enterkeyhint="search">
+        <span class="cnt" id="findCnt"></span>
+        <button type="button" id="findPrev" title="前へ">↑</button><button type="button" id="findNext" title="次へ">↓</button>
+        <button type="button" id="findClose" title="閉じる">✕</button>
+        <span class="grow"></span>
+        <input type="text" id="replIn" placeholder="置き換える語句" autocomplete="off">
+        <button type="button" id="replOne">置換</button><button type="button" id="replAll">すべて置換</button>
+        <label><input type="checkbox" id="findAll">全ノートで</label>
       </div>
       <div id="tableBar" hidden>
         <span class="lbl">表：</span>
@@ -421,6 +456,15 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <input type="file" id="importInput" hidden>
     <div class="row end"><button value="close">閉じる</button></div>
   </form>
+</dialog>
+<dialog id="tocDlg">
+  <div class="dlg">
+    <h3>目次と文字数</h3>
+    <div class="toc-sum" id="tocSum"></div>
+    <ul id="tocList"></ul>
+    <p class="hint">文字数は空白・改行を除いて数えています。見出しを選ぶとその場所へ移動します。</p>
+    <div class="row end"><button type="button" id="tocClose">閉じる</button></div>
+  </div>
 </dialog>
 <dialog id="cmtDlg">
   <form method="dialog" class="dlg" id="cmtForm">
@@ -880,6 +924,7 @@ const editorEl = $('#editor'), titleEl = $('#title');
 let saveTimer = null;
 function onEdit(label){
   clearTimeout(saveTimer); $('#saveState').textContent = '編集中…'; saveTimer = setTimeout(saveCurrent, 500);
+  updateCount();
   if (S.histApplying) return;
   if (typeof label === 'string') histCommit(label); else histTyping();
 }
@@ -927,7 +972,8 @@ function loadIntoEditor(n){
   $('#deleteBtn').title = ro ? '完全に削除' : 'ゴミ箱へ';
   renderNbSelect(n); updateSaveState(n);
   deselectImage(); applyImgSizes(editorEl); hydrate(editorEl);
-  histInit(n); hideCmtPop(); updateCmtBtn();
+  histInit(n); hideCmtPop(); updateCmtBtn(); updateCount();
+  if (!$('#findBar').hidden) runFind();
 }
 async function openNote(id, {push = true} = {}){
   histBefore();
@@ -2329,6 +2375,174 @@ document.addEventListener('pointercancel', onDragUp);
 document.addEventListener('touchmove', e => { if (DRAG.active) e.preventDefault(); }, {passive: false});
 document.addEventListener('contextmenu', e => { if (DRAG.active || (DRAG.cand && DRAG.cand.touch)) e.preventDefault(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && DRAG.active) endDrag(true); });
+
+/* ---------------- 文字数と目次 ---------------- */
+const countChars = s => [...String(s).replace(/[\s　]/g, '')].length;
+function editorPlainText(root){
+  const c = (root || editorEl).cloneNode(true);
+  c.querySelectorAll('a.att').forEach(x => x.remove());
+  return c.textContent || '';
+}
+let countTimer = null;
+function updateCount(){
+  clearTimeout(countTimer);
+  countTimer = setTimeout(() => {
+    if (!S.currentId) return;
+    const total = countChars(editorPlainText());
+    const s = getSelection(); let sel = 0;
+    if (s.rangeCount && !s.isCollapsed && editorEl.contains(s.getRangeAt(0).commonAncestorContainer)) sel = countChars(s.toString());
+    $('#countBtn').textContent = (sel ? `選択 ${sel.toLocaleString()} / ` : '') + total.toLocaleString() + '字';
+  }, 200);
+}
+editorEl.addEventListener('input', updateCount);
+document.addEventListener('selectionchange', () => { if (S.currentId) updateCount(); });
+function buildToc(){
+  const heads = [...editorEl.querySelectorAll('h1,h2,h3,h4')].filter(x => !x.closest('td,th'));
+  // 見出しごとの区間の文字数（次の同じかより上位の見出しまで）
+  const blocks = [...editorEl.children];
+  return heads.map((hd, i) => {
+    const lv = Number(hd.tagName[1]);
+    const start = blocks.indexOf(hd.closest('#editor > *') || hd);
+    let end = blocks.length;
+    for (let j = i + 1; j < heads.length; j++) if (Number(heads[j].tagName[1]) <= lv) { end = blocks.indexOf(heads[j].closest('#editor > *') || heads[j]); break; }
+    let n = 0; for (let k = start; k < end && k >= 0; k++) n += countChars(editorPlainText(blocks[k]));
+    return {el: hd, lv, text: hd.textContent.trim() || '（空の見出し）', chars: n};
+  });
+}
+function openToc(){
+  const total = countChars(editorPlainText()), all = editorPlainText().replace(/\s/g, '').length;
+  const paras = [...editorEl.querySelectorAll('p,li,h1,h2,h3,h4,blockquote,pre')].filter(x => x.textContent.trim()).length;
+  $('#tocSum').innerHTML = `<span>全体 <b>${total.toLocaleString()}</b> 字</span><span>400字詰め原稿用紙 約 <b>${Math.ceil(total / 400).toLocaleString()}</b> 枚</span><span>段落 ${paras}</span>`;
+  const toc = buildToc(); S.toc = toc;
+  $('#tocList').innerHTML = toc.length ? toc.map((t, i) => `<li data-i="${i}" class="l${t.lv}" style="padding-left:${10 + (t.lv - 1) * 18}px"><span class="lv">${esc(t.text)}</span><span class="cc">${t.chars.toLocaleString()}字</span></li>`).join('')
+    : '<li style="cursor:default;color:var(--mute)">見出しがありません（ツールバーの「見出し」で付けると目次になります）</li>';
+  $('#tocDlg').showModal();
+}
+$('#countBtn').addEventListener('click', openToc);
+$('#tocClose').addEventListener('click', () => $('#tocDlg').close());
+$('#tocDlg').addEventListener('click', e => { if (e.target === $('#tocDlg')) $('#tocDlg').close(); });
+$('#tocList').addEventListener('click', e => {
+  const li = e.target.closest('li[data-i]'); if (!li) return;
+  const t = S.toc[Number(li.dataset.i)]; $('#tocDlg').close();
+  t.el.scrollIntoView({block: 'start', behavior: 'smooth'});
+  t.el.classList.add('flash-h'); setTimeout(() => t.el.classList.remove('flash-h'), 1500);
+  if (editorEl.isContentEditable) placeCaret(t.el, false);
+});
+
+/* ---------------- 検索と置換 ---------------- */
+const FIND = {ranges: [], cur: -1};
+const hasHL = typeof Highlight !== 'undefined' && CSS.highlights;
+function findRangesIn(root, q){
+  const out = []; if (!q) return out;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {acceptNode: n => n.parentElement.closest('a.att') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT});
+  let n; while ((n = w.nextNode())) { let i = 0; while ((i = n.data.indexOf(q, i)) >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + q.length); out.push(r); i += q.length; } }
+  return out;
+}
+function paintFind(){
+  if (!hasHL) return;
+  CSS.highlights.set('nb-find', new Highlight(...FIND.ranges));
+  CSS.highlights.set('nb-find-cur', FIND.cur >= 0 && FIND.ranges[FIND.cur] ? new Highlight(FIND.ranges[FIND.cur]) : new Highlight());
+}
+function clearFindPaint(){ if (hasHL) { CSS.highlights.delete('nb-find'); CSS.highlights.delete('nb-find-cur'); } }
+function globalCount(q){
+  let notes = 0, hits = 0;
+  for (const n of S.notes.values()) { if (n.deleted) continue;
+    const doc = new DOMParser().parseFromString(`<body>${n.id === S.currentId ? editorHTML() : n.body}</body>`, 'text/html');
+    const c = findRangesIn(doc.body, q).length + (n.id === S.currentId ? titleEl.value : n.title).split(q).length - 1;
+    if (c) { notes++; hits += c; } }
+  return {notes, hits};
+}
+function runFind(keepIndex){
+  const q = $('#findIn').value;
+  FIND.ranges = findRangesIn(editorEl, q);
+  if (!keepIndex || FIND.cur >= FIND.ranges.length) FIND.cur = FIND.ranges.length ? 0 : -1;
+  paintFind();
+  let label = q ? (FIND.ranges.length ? `${FIND.cur + 1}/${FIND.ranges.length}` : '0件') : '';
+  if (q && $('#findAll').checked) { const g = globalCount(q); label += `・全${g.notes}ノート ${g.hits}件`; }
+  $('#findCnt').textContent = label;
+}
+function gotoFind(d){
+  if (!FIND.ranges.length) return;
+  FIND.cur = (FIND.cur + d + FIND.ranges.length) % FIND.ranges.length; paintFind();
+  $('#findCnt').textContent = $('#findCnt').textContent.replace(/^\d+\//, `${FIND.cur + 1}/`);
+  const r = FIND.ranges[FIND.cur], el = r.startContainer.parentElement;
+  el.scrollIntoView({block: 'center', behavior: 'smooth'});
+  if (!hasHL) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+}
+function openFind(withReplace){
+  const bar = $('#findBar'); bar.hidden = false;
+  const s = getSelection(); const sel = s.rangeCount && !s.isCollapsed && editorEl.contains(s.anchorNode) ? s.toString() : '';
+  if (sel && sel.length < 60 && !sel.includes('\n')) $('#findIn').value = sel;
+  (withReplace && $('#findIn').value ? $('#replIn') : $('#findIn')).focus();
+  runFind();
+}
+function closeFind(){ $('#findBar').hidden = true; FIND.ranges = []; FIND.cur = -1; clearFindPaint(); }
+let findTimer;
+$('#findIn').addEventListener('input', () => { clearTimeout(findTimer); findTimer = setTimeout(() => runFind(), 150); });
+$('#findIn').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); gotoFind(e.shiftKey ? -1 : 1); } else if (e.key === 'Escape') closeFind(); });
+$('#replIn').addEventListener('keydown', e => { if (e.key === 'Escape') closeFind(); });
+$('#findAll').addEventListener('change', () => runFind(true));
+$('#findNext').addEventListener('click', () => gotoFind(1));
+$('#findPrev').addEventListener('click', () => gotoFind(-1));
+$('#findClose').addEventListener('click', closeFind);
+editorEl.addEventListener('input', () => { if (!$('#findBar').hidden) { clearTimeout(findTimer); findTimer = setTimeout(() => runFind(true), 250); } });
+$('#replOne').addEventListener('click', () => {
+  if (!editorEl.isContentEditable) return;
+  const r = FIND.ranges[FIND.cur]; if (!r) return;
+  histBefore(); r.deleteContents(); r.insertNode(document.createTextNode($('#replIn').value)); editorEl.normalize();
+  onEdit('置換'); runFind(true); if (FIND.ranges.length) gotoFind(0);
+});
+let lastGlobalUndo = null;
+$('#replAll').addEventListener('click', async () => {
+  const q = $('#findIn').value, rep = $('#replIn').value; if (!q) return;
+  if (!$('#findAll').checked) {
+    if (!editorEl.isContentEditable || !FIND.ranges.length) return;
+    histBefore(); const n = FIND.ranges.length;
+    for (const r of [...FIND.ranges].reverse()) { r.deleteContents(); r.insertNode(document.createTextNode(rep)); }
+    editorEl.normalize(); onEdit(`すべて置換（${n}件）`); runFind(); toast(`${n}件を置換しました`); return;
+  }
+  const g = globalCount(q); if (!g.hits) { toast('見つかりませんでした'); return; }
+  if (!confirm(`${g.notes}件のノートで、合計${g.hits}か所の「${q}」を「${rep}」に置き換えますか？\n（タイトルも対象です。置換後に「元に戻す」ができます）`)) return;
+  histBefore(); await flushSave();
+  const backup = new Map(); let total = 0;
+  for (const n of S.notes.values()) { if (n.deleted) continue;
+    const doc = new DOMParser().parseFromString(`<body>${n.body}</body>`, 'text/html');
+    const rs = findRangesIn(doc.body, q); const tc = n.title.split(q).length - 1;
+    if (!rs.length && !tc) continue;
+    backup.set(n.id, {title: n.title, body: n.body, text: n.text});
+    for (const r of rs.reverse()) { r.deleteContents(); r.insertNode(doc.createTextNode(rep)); }
+    doc.body.normalize();
+    n.body = doc.body.innerHTML; n.title = n.title.split(q).join(rep); n.text = htmlToText(n.body);
+    n.updated = now(); n.dirty = true; await storeNote(n); total += rs.length + tc;
+  }
+  lastGlobalUndo = backup;
+  if (S.currentId && backup.has(S.currentId)) loadIntoEditor(S.notes.get(S.currentId));
+  renderAll(); scheduleSync(); runFind();
+  showBanner(`${backup.size}件のノートで${total}か所を置換しました`, '元に戻す', async () => {
+    if (!lastGlobalUndo) return;
+    for (const [id, b] of lastGlobalUndo) { const n = S.notes.get(id); if (!n) continue; Object.assign(n, b, {updated: now(), dirty: true}); await storeNote(n); }
+    if (S.currentId && lastGlobalUndo.has(S.currentId)) loadIntoEditor(S.notes.get(S.currentId));
+    lastGlobalUndo = null; renderAll(); scheduleSync(); toast('置換を元に戻しました');
+  });
+});
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || !S.currentId || $('#editorWrap').hidden) return;
+  const k = e.key.toLowerCase();
+  if (k === 'f' && !e.shiftKey) { e.preventDefault(); openFind(false); }
+  else if (k === 'h' || (k === 'f' && e.shiftKey)) { e.preventDefault(); openFind(true); }
+});
+
+/* ---------------- ノートのその他メニュー ---------------- */
+const MORE_ITEMS = [];   // {k, label, run, show?}
+function addMoreItem(it){ MORE_ITEMS.push(it); }
+addMoreItem({k: 'toc', label: '📑 目次と文字数', run: openToc});
+addMoreItem({k: 'find', label: '🔍 検索と置換', run: () => openFind(true)});
+$('#moreBtn').addEventListener('click', async () => {
+  const n = S.notes.get(S.currentId); if (!n) return;
+  const items = MORE_ITEMS.filter(x => !x.show || x.show(n));
+  const k = await showMenu(items.map(x => ({k: x.k, label: x.label, danger: x.danger})));
+  const it = items.find(x => x.k === k); if (it) it.run(n);
+});
 
 /* ---------------- boot ---------------- */
 (async () => {
