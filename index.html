@@ -95,13 +95,17 @@ input,select{font:inherit;color:inherit}
 #tags{width:100%;border:0;outline:none;background:none;font-size:13px;color:var(--mute);padding:4px 0 10px;border-bottom:1px dashed var(--line);margin-bottom:12px}
 .toolbar{display:flex;gap:2px;flex-wrap:nowrap;overflow-x:auto;padding:6px 10px;border-bottom:1px solid var(--line);scrollbar-width:none}
 .toolbar::-webkit-scrollbar{display:none}
-.toolbar button{min-width:34px;height:32px;border-radius:7px;padding:0 8px;font-size:14px;white-space:nowrap;color:var(--fg)}
+.toolbar button{flex:none;min-width:34px;height:32px;border-radius:7px;padding:0 8px;font-size:14px;white-space:nowrap;color:var(--fg)}
 .toolbar button:hover{background:var(--sel)}
 .toolbar .sep{width:1px;background:var(--line);margin:6px 4px;flex:none}
 #editor{outline:none;line-height:1.75;min-height:50vh;word-break:break-word}
 #editor:empty::before{content:"ここに書く…";color:var(--mute)}
-#editor h1,#editor h2{font-size:19px;margin:18px 0 6px}
-#editor h3{font-size:16px}
+#editor h1,#editor h2,#editor h3,#editor h4{line-height:1.4;margin:18px 0 6px}
+#editor h1{font-size:23px;padding-bottom:4px;border-bottom:2px solid var(--line)}
+#editor h2{font-size:20px;padding-left:10px;border-left:4px solid var(--accent)}
+#editor h3{font-size:17px}
+#editor h4{font-size:15px;color:var(--mute)}
+#editor h5,#editor h6{font-size:15px;margin:12px 0 4px}
 #editor p{margin:0 0 6px}
 #editor blockquote{margin:8px 0;padding:4px 14px;border-left:3px solid var(--accent);color:var(--mute)}
 #editor img{max-width:100%;height:auto;border-radius:8px;display:block;margin:8px 0;background:var(--sel)}
@@ -114,8 +118,17 @@ input,select{font:inherit;color:inherit}
 #editor ul.check>li.done::before{background:var(--accent);border-color:var(--accent)}
 #editor ul.check>li.done::after{content:"";position:absolute;left:7px;top:.55em;width:4px;height:8px;border:solid var(--accent-fg);border-width:0 2px 2px 0;transform:rotate(45deg)}
 #editor a[href]{color:var(--accent)}
-#editor table{border-collapse:collapse;margin:8px 0;max-width:100%;display:block;overflow-x:auto}
-#editor td,#editor th{border:1px solid var(--line);padding:4px 8px;vertical-align:top}
+#editor table{border-collapse:collapse;margin:10px 0;width:100%;table-layout:fixed}
+#editor td,#editor th{border:1px solid var(--mute);padding:5px 8px;vertical-align:top;word-break:break-word;min-width:3em;line-height:1.5}
+#editor th{background:var(--sel);font-weight:600;text-align:left}
+#editor td.cur,#editor th.cur{outline:2px solid var(--accent);outline-offset:-2px}
+#tableBar{display:flex;gap:2px;overflow-x:auto;padding:4px 10px;border-bottom:1px solid var(--line);background:var(--accent-soft);scrollbar-width:none;align-items:center}
+#tableBar::-webkit-scrollbar{display:none}
+#tableBar .lbl{font-size:12px;color:var(--mute);margin-right:4px;white-space:nowrap}
+#tableBar button{flex:none;height:30px;border-radius:7px;padding:0 9px;font-size:13px;white-space:nowrap;color:var(--fg)}
+#tableBar button:hover{background:var(--panel)}
+#tableBar button.danger{color:var(--danger)}
+.readonly #tableBar{display:none}
 #editor figure{margin:8px 0}
 #editor pre{white-space:pre-wrap;background:var(--sel);padding:8px 10px;border-radius:6px;font-size:13px}
 #editor a.att{display:inline-block;background:var(--sel);border:1px solid var(--line);border-radius:7px;padding:2px 10px;color:var(--fg);text-decoration:none;font-size:14px;cursor:pointer;margin:2px 0}
@@ -198,7 +211,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button class="icon-btn danger" id="deleteBtn" aria-label="削除">🗑</button>
       </header>
       <div class="toolbar" id="toolbar">
-        <button data-cmd="h" title="見出し">見出し</button>
+        <button data-cmd="h" title="見出し（4段階）">見出し ▾</button>
         <button data-cmd="b" title="太字"><b>B</b></button>
         <button data-cmd="i" title="斜体"><i>I</i></button>
         <button data-cmd="s" title="取り消し線"><s>S</s></button>
@@ -207,8 +220,20 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button data-cmd="ul" title="箇条書き">•≡</button>
         <button data-cmd="ol" title="番号付き">1≡</button>
         <button data-cmd="quote" title="引用">❝</button>
+        <button data-cmd="table" title="表を挿入">▦ 表</button>
         <span class="sep"></span>
         <button data-cmd="attach" title="画像・ファイルを添付">📎 添付</button>
+      </div>
+      <div id="tableBar" hidden>
+        <span class="lbl">表：</span>
+        <button data-t="rowAbove">＋行（上）</button>
+        <button data-t="rowBelow">＋行（下）</button>
+        <button data-t="colLeft">＋列（左）</button>
+        <button data-t="colRight">＋列（右）</button>
+        <button data-t="header">見出し行</button>
+        <button data-t="delRow" class="danger">−行</button>
+        <button data-t="delCol" class="danger">−列</button>
+        <button data-t="delTable" class="danger">表を削除</button>
       </div>
       <div class="ed-body">
         <input id="title" placeholder="タイトル" autocomplete="off">
@@ -304,7 +329,7 @@ function sanitize(html){
 }
 function htmlToText(html){
   const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
-  doc.body.querySelectorAll('p,div,li,h1,h2,h3,br,blockquote,pre').forEach(e => e.append(' '));
+  doc.body.querySelectorAll('p,div,li,h1,h2,h3,h4,h5,h6,br,blockquote,pre,td,th').forEach(e => e.append(' '));
   return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 }
 const parseTags = s => [...new Set(String(s).split(/[,，、]/).map(t => t.trim()).filter(Boolean))];
@@ -642,6 +667,7 @@ async function flushSave(){ if (saveTimer) { clearTimeout(saveTimer); saveTimer 
 function editorHTML(){
   const c = editorEl.cloneNode(true);
   c.querySelectorAll('img[data-att]').forEach(i => { i.removeAttribute('src'); i.classList.remove('missing'); i.removeAttribute('class'); });
+  c.querySelectorAll('.cur').forEach(x => { x.classList.remove('cur'); if (!x.className) x.removeAttribute('class'); });
   return c.innerHTML;
 }
 async function saveCurrent(){
@@ -671,7 +697,7 @@ function renderNbSelect(n){
 function loadIntoEditor(n){
   titleEl.value = n.title; tagsEl.value = (n.tags || []).join(', ');
   editorEl.innerHTML = sanitize(n.body);
-  S.loadedUpdated = n.updated; S.range = null;
+  S.loadedUpdated = n.updated; S.range = null; curCell = null; $('#tableBar').hidden = true;
   const ro = !!n.deleted;
   editorEl.contentEditable = String(!ro); titleEl.readOnly = ro; tagsEl.readOnly = ro;
   $('#editorWrap').classList.toggle('readonly', ro);
@@ -705,7 +731,7 @@ function refreshEditorAfterSync(){
 }
 document.addEventListener('selectionchange', () => {
   const sel = getSelection();
-  if (sel.rangeCount && editorEl.contains(sel.anchorNode)) S.range = sel.getRangeAt(0).cloneRange();
+  if (sel.rangeCount && editorEl.contains(sel.anchorNode)) { S.range = sel.getRangeAt(0).cloneRange(); updateTableBar(); }
 });
 function restoreRange(){
   const sel = getSelection();
@@ -733,6 +759,108 @@ function setCaretOffset(off){
     off -= n.length; last = n;
   }
 }
+const HEADINGS = [
+  {k: 'h1', label: '大見出し（見出し1）'}, {k: 'h2', label: '中見出し（見出し2）'},
+  {k: 'h3', label: '小見出し（見出し3）'}, {k: 'h4', label: '見出し4'}, {k: 'p', label: '本文に戻す'}];
+async function headingMenu(){
+  const caret = getCaretOffset();
+  const cur = closestInEditor('h1,h2,h3,h4,h5,h6');
+  const curTag = cur ? cur.tagName.toLowerCase() : 'p';
+  const k = await showMenu(HEADINGS.map(x => ({k: x.k, label: (x.k === curTag ? '✓ ' : '　') + x.label})));
+  editorEl.focus();
+  if (S.range) { const s = getSelection(); s.removeAllRanges(); s.addRange(S.range); }
+  if (!k || k === curTag) return;
+  if (closestInEditor('td,th')) { toast('表の中では見出しを使えません'); return; }
+  document.execCommand('formatBlock', false, `<${k}>`);
+  if (caret != null) setCaretOffset(caret);
+  onEdit();
+}
+
+/* tables */
+function placeCaret(el, atEnd = false){
+  editorEl.focus();
+  const r = document.createRange(); r.selectNodeContents(el); r.collapse(!atEnd);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+let curCell = null;
+function updateTableBar(){
+  const cell = editorEl.isContentEditable ? closestInEditor('td,th') : null;
+  if (curCell && curCell !== cell) curCell.classList.remove('cur');
+  if (cell) cell.classList.add('cur');
+  curCell = cell;
+  $('#tableBar').hidden = !cell;
+}
+function insertTable(rows = 3, cols = 3){
+  if (closestInEditor('td,th')) { toast('表の中には表を挿入できません'); return; }
+  const row = '<tr>' + '<td><br></td>'.repeat(cols) + '</tr>';
+  document.execCommand('insertHTML', false, `<table id="nb-new"><tbody>${row.repeat(rows)}</tbody></table><p><br></p>`);
+  const t = editorEl.querySelector('#nb-new');
+  if (t) { t.removeAttribute('id'); placeCaret(t.rows[0].cells[0]); }
+  onEdit();
+}
+function tableOp(op){
+  const cell = closestInEditor('td,th') || curCell; if (!cell || !editorEl.contains(cell)) return;
+  const row = cell.parentElement, table = cell.closest('table'), ci = cell.cellIndex;
+  const rows = [...table.rows];
+  const mk = (tag = 'td') => { const c = document.createElement(tag); c.innerHTML = '<br>'; return c; };
+  let target = null;
+  switch (op){
+    case 'rowAbove': case 'rowBelow': {
+      const r = document.createElement('tr');
+      for (let i = 0; i < row.cells.length; i++) r.appendChild(mk('td'));
+      op === 'rowAbove' ? row.before(r) : row.after(r);
+      target = r.cells[Math.min(ci, r.cells.length - 1)]; break;
+    }
+    case 'colLeft': case 'colRight': {
+      for (const r of rows) {
+        const ref = r.cells[Math.min(ci, r.cells.length - 1)];
+        const c = mk(ref && ref.tagName === 'TH' ? 'th' : 'td');
+        if (!ref) r.appendChild(c); else op === 'colLeft' ? ref.before(c) : ref.after(c);
+        if (r === row) target = c;
+      }
+      break;
+    }
+    case 'header': {
+      const first = rows[0], toTh = [...first.cells].some(c => c.tagName === 'TD');
+      for (const c of [...first.cells]) {
+        const n = document.createElement(toTh ? 'th' : 'td');
+        n.innerHTML = c.innerHTML || '<br>'; c.replaceWith(n);
+        if (c === cell) target = n;
+      }
+      target = target || cell; break;
+    }
+    case 'delRow': {
+      if (rows.length <= 1) return deleteTable(table);
+      const next = row.nextElementSibling || row.previousElementSibling;
+      row.remove(); target = next.cells[Math.min(ci, next.cells.length - 1)]; break;
+    }
+    case 'delCol': {
+      if (row.cells.length <= 1) return deleteTable(table);
+      for (const r of rows) if (r.cells[ci]) r.cells[ci].remove();
+      target = row.cells[Math.max(0, ci - 1)]; break;
+    }
+    case 'delTable': return deleteTable(table);
+  }
+  if (target) placeCaret(target, true);
+  onEdit(); updateTableBar();
+}
+function deleteTable(table){
+  if (!confirm('この表を削除しますか？')) return;
+  const p = document.createElement('p'); p.innerHTML = '<br>';
+  table.replaceWith(p); placeCaret(p); curCell = null; onEdit(); updateTableBar();
+}
+$('#tableBar').addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+$('#tableBar').addEventListener('click', e => { const b = e.target.closest('button'); if (b) tableOp(b.dataset.t); });
+editorEl.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || e.isComposing) return;
+  const cell = closestInEditor('td,th'); if (!cell) return;
+  e.preventDefault();
+  const cells = [...cell.closest('table').querySelectorAll('td,th')];
+  const i = cells.indexOf(cell) + (e.shiftKey ? -1 : 1);
+  if (i >= cells.length) { tableOp('rowBelow'); return; }
+  if (i >= 0) placeCaret(cells[i], true);
+});
+
 function toggleBlock(tag){
   const cur = closestInEditor(tag.toLowerCase());
   document.execCommand('formatBlock', false, cur ? '<p>' : `<${tag.toLowerCase()}>`);
@@ -748,9 +876,10 @@ $('#toolbar').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.cmd === 'attach') { $('#fileInput').click(); return; }
   restoreRange();
+  if (b.dataset.cmd === 'h') { headingMenu(); return; }
+  if (b.dataset.cmd === 'table') { insertTable(); return; }
   const caret = getCaretOffset();
   switch (b.dataset.cmd){
-    case 'h': toggleBlock('H2'); break;
     case 'b': document.execCommand('bold'); break;
     case 'i': document.execCommand('italic'); break;
     case 's': document.execCommand('strikeThrough'); break;
@@ -759,7 +888,7 @@ $('#toolbar').addEventListener('click', e => {
     case 'check': toggleChecklist(); break;
     case 'quote': toggleBlock('BLOCKQUOTE'); break;
   }
-  if (caret != null && ['h','check','ul','ol','quote'].includes(b.dataset.cmd)) setCaretOffset(caret);
+  if (caret != null && ['check','ul','ol','quote'].includes(b.dataset.cmd)) setCaretOffset(caret);
   onEdit();
 });
 $('#fileInput').addEventListener('change', async e => {
