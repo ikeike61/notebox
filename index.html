@@ -101,7 +101,25 @@ body[data-full] .ed-body{max-width:960px;width:100%;margin:0 auto}
 .link-btn{font-size:13px;color:var(--danger);padding:4px 8px;border-radius:6px}
 .link-btn:hover{background:var(--sel)}
 #noteList{list-style:none;margin:0;padding:0;overflow:auto;flex:1;min-height:0;padding-bottom:env(safe-area-inset-bottom)}
-.note-item{padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+.note-item{padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;position:relative}
+.selmode .note-item{padding-left:46px}
+.selmode .note-item::before{content:"";position:absolute;left:16px;top:15px;width:18px;height:18px;border-radius:50%;border:2px solid var(--mute)}
+.selmode .note-item.checked{background:var(--accent-soft)}
+.selmode .note-item.checked::before{background:var(--accent);border-color:var(--accent);box-shadow:inset 0 0 0 3px var(--panel)}
+.note-item.dragging{opacity:.4}
+#bulkBar{display:flex;align-items:center;gap:4px;padding:8px 10px;padding-bottom:calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel);overflow-x:auto;scrollbar-width:none}
+#bulkBar[hidden]{display:none}
+#bulkBar .n{font-size:13px;font-weight:600;margin-right:4px;white-space:nowrap}
+#bulkBar button{height:32px;padding:0 10px;border-radius:8px;font-size:13px;white-space:nowrap;flex:none;color:var(--fg)}
+#bulkBar button:hover{background:var(--sel)}#bulkBar button.danger{color:var(--danger)}#bulkBar button.done{background:var(--accent);color:var(--accent-fg)}
+#selBtn.on{color:var(--accent);background:var(--accent-soft)}
+#dragGhost{position:fixed;z-index:60;pointer-events:none;background:var(--accent);color:var(--accent-fg);padding:6px 12px;border-radius:999px;font-size:13px;box-shadow:0 8px 20px rgba(0,0,0,.25);transform:translate(12px,12px);max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#dragGhost[hidden]{display:none}
+.drop-hi{background:var(--accent)!important;color:var(--accent-fg)!important}
+.drop-hi .cnt,.drop-hi .more{color:var(--accent-fg)!important}
+body.dragging-note,body.dragging-note *{cursor:grabbing!important;user-select:none!important}
+.nav-item .tw{width:16px;flex:none;text-align:center;color:var(--side-mute);font-size:10px;cursor:pointer}
+.nav-sec.drop-hi{border-radius:6px}
 .note-item:hover{background:var(--sel)}
 .note-item.active{background:var(--accent-soft)}
 .ni-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -282,11 +300,13 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <header class="list-head">
       <button class="icon-btn mobile-only" id="menuBtn" aria-label="メニュー">☰</button>
       <h2 id="listTitle">すべてのノート</h2>
+      <button class="icon-btn text" id="selBtn" title="複数選択">選択</button>
       <button class="icon-btn" id="newNoteList" aria-label="新しいノート">＋</button>
     </header>
     <div class="search"><input id="search" type="search" placeholder="検索（スペース区切りでAND）" autocomplete="off"></div>
     <div id="listActions"></div>
     <ul id="noteList"></ul>
+    <div id="bulkBar" hidden></div>
   </section>
 
   <div class="split" data-split="lw" title="ドラッグで幅を変更（ダブルクリックで元に戻す）"></div>
@@ -369,6 +389,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 </div>
 <div id="scrim"></div>
 <div id="toast"></div>
+<div id="dragGhost" hidden></div>
 <div id="banner" hidden><span id="bannerText"></span><button class="primary" id="bannerAct"></button><button id="bannerClose" aria-label="閉じる">✕</button></div>
 
 <dialog id="settings">
@@ -529,6 +550,7 @@ const S = {
   currentId: null, loadedUpdated: null, range: null,
   token: null, tokenExp: 0,
   syncing: false, syncAgain: false, error: '', lastSyncAt: 0,
+  selMode: false, selected: new Set(), lastClicked: null, suppressClick: false,
 };
 async function storeNote(n){ S.notes.set(n.id, n); await db.put('notes', n); }
 function normalizeNote(d){
@@ -544,6 +566,22 @@ const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.noteb
 // 同期で使う版番号（ピン留めなど、更新日時を変えない変更でも上がる）
 const revOf = n => Math.max(Number(n.rev) || 0, Number(n.updated) || 0);
 const activeNotebooks = () => S.notebooks.filter(n => !n.deleted).sort((a,b) => a.name.localeCompare(b.name, 'ja'));
+const nbById = id => S.notebooks.find(b => b.id === id && !b.deleted);
+// 親が消えている・循環しているものは最上位として扱う
+function nbParent(nb){
+  const p = nb.parentId && nbById(nb.parentId);
+  if (!p) return null;
+  let x = p, guard = 0;
+  while (x && guard++ < 50) { if (x.id === nb.id) return null; x = x.parentId && nbById(x.parentId); }
+  return p;
+}
+const nbChildren = id => activeNotebooks().filter(b => (nbParent(b)?.id || null) === (id || null));
+function nbDescendants(id){ const out = new Set(); const walk = x => nbChildren(x).forEach(c => { if (!out.has(c.id)) { out.add(c.id); walk(c.id); } }); walk(id); return out; }
+function nbTree(){   // [{nb, depth}] 表示順
+  const out = []; const walk = (pid, d) => nbChildren(pid).forEach(c => { out.push({nb: c, depth: d}); walk(c.id, d + 1); });
+  walk(null, 0); return out;
+}
+function nbPath(id){ const parts = []; let x = nbById(id), g = 0; while (x && g++ < 20) { parts.unshift(x.name); x = nbParent(x); } return parts.join(' / '); }
 const nbOf = n => (n.notebookId && S.notebooks.some(b => b.id === n.notebookId && !b.deleted)) ? n.notebookId : '';
 const notebookName = id => (S.notebooks.find(b => b.id === id && !b.deleted) || {name:'未分類'}).name;
 
@@ -874,7 +912,7 @@ async function cleanupEmpty(id){
 function showEditor(on){ $('#editorWrap').hidden = !on; $('#emptyEditor').hidden = on; }
 function renderNbSelect(n){
   const sel = $('#nbSelect'), cur = nbOf(n);
-  sel.innerHTML = `<option value="">未分類</option>` + activeNotebooks().map(b => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
+  sel.innerHTML = `<option value="">未分類</option>` + nbTree().map(({nb: b, depth}) => `<option value="${esc(b.id)}">${'　'.repeat(depth)}${depth ? '└ ' : ''}${esc(b.name)}</option>`).join('');
   sel.value = cur; sel.disabled = !!n.deleted;
 }
 function loadIntoEditor(n){
@@ -1311,9 +1349,27 @@ async function newNote(){
   await Promise.all([opening, db.put('notes', n)]);
 }
 async function saveNotebooks(){ await db.put('kv', S.notebooks, 'notebooks'); scheduleSync(2000); }
-async function addNotebook(){
-  const name = prompt('新しいノートブックの名前'); if (!name || !name.trim()) return;
-  const nb = {id: uid(), name: name.trim(), updated: now(), deleted: false};
+function getCollapsed(){ try { return new Set(JSON.parse(localStorage.getItem('nb.collapsed') || '[]')); } catch { return new Set(); } }
+function toggleCollapsed(id){ const c = getCollapsed(); c.has(id) ? c.delete(id) : c.add(id); try { localStorage.setItem('nb.collapsed', JSON.stringify([...c])); } catch {} renderNav(); }
+async function setNbParent(id, parentId){
+  const nb = nbById(id); if (!nb) return false;
+  if (parentId && (parentId === id || nbDescendants(id).has(parentId))) { toast('自分の中には移動できません'); return false; }
+  if ((nb.parentId || null) === (parentId || null)) return false;
+  nb.parentId = parentId || null; nb.updated = now(); await saveNotebooks();
+  if (parentId) { const c = getCollapsed(); c.delete(parentId); try { localStorage.setItem('nb.collapsed', JSON.stringify([...c])); } catch {} }
+  renderAll(); if (S.currentId) renderNbSelect(S.notes.get(S.currentId));
+  toast(parentId ? `「${nb.name}」を「${nbById(parentId).name}」の中に移動しました` : `「${nb.name}」をいちばん上の階層に移動しました`);
+  return true;
+}
+async function chooseNbParent(id){
+  const ex = new Set([id, ...nbDescendants(id)]);
+  const items = [{k: '__root', label: '（いちばん上の階層）'}, ...nbTree().filter(x => !ex.has(x.nb.id)).map(x => ({k: x.nb.id, label: '　'.repeat(x.depth) + x.nb.name}))];
+  const k = await showMenu(items); if (!k) return;
+  await setNbParent(id, k === '__root' ? null : k);
+}
+async function addNotebook(parentId = null){
+  const name = prompt(parentId ? `「${nbById(parentId)?.name}」の中に作るノートブックの名前` : '新しいノートブックの名前'); if (!name || !name.trim()) return;
+  const nb = {id: uid(), name: name.trim(), updated: now(), deleted: false, parentId: parentId || null};
   S.notebooks.push(nb); await saveNotebooks();
   setFilter('nb', nb.id);
 }
@@ -1325,9 +1381,12 @@ async function renameNotebook(id){
 }
 async function deleteNotebook(id){
   const nb = S.notebooks.find(b => b.id === id); if (!nb) return;
-  if (!confirm(`ノートブック「${nb.name}」を削除しますか？\n中のノートは「未分類」に移動します。`)) return;
+  const parent = nbParent(nb);
+  const dest = parent ? `「${parent.name}」` : '「未分類」';
+  if (!confirm(`ノートブック「${nb.name}」を削除しますか？\n中のノートは${dest}に、中のノートブックは一つ上の階層に移動します。`)) return;
+  for (const c of nbChildren(id)) { c.parentId = parent ? parent.id : null; c.updated = now(); }
   nb.deleted = true; nb.updated = now();
-  for (const n of S.notes.values()) if (n.notebookId === id) { n.notebookId = null; n.updated = now(); n.dirty = true; await storeNote(n); }
+  for (const n of S.notes.values()) if (n.notebookId === id) { n.notebookId = parent ? parent.id : null; n.updated = now(); n.dirty = true; await storeNote(n); }
   await saveNotebooks();
   if (S.filter.type === 'nb' && S.filter.value === id) S.filter = {type: 'all', value: ''};
   renderAll(); if (S.currentId) renderNbSelect(S.notes.get(S.currentId));
@@ -1365,10 +1424,20 @@ function renderNav(){
     h += `<div style="height:8px"></div>`;
   }
   h += item('all', '', '📒 すべてのノート', live.length);
-  h += `<div class="nav-sec"><span>ノートブック</span><button class="mini" id="addNb" aria-label="ノートブックを追加">＋</button></div>`;
-  for (const nb of activeNotebooks()) h += item('nb', nb.id, nb.name, live.filter(n => nbOf(n) === nb.id).length, `<span class="more" data-nbmenu="${esc(nb.id)}" role="button" aria-label="メニュー">⋯</span>`);
+  h += `<div class="nav-sec" data-nbroot="1"><span>ノートブック</span><button class="mini" id="addNb" aria-label="ノートブックを追加">＋</button></div>`;
+  const collapsed = getCollapsed();
+  const counts = new Map(); for (const n of live) { const k = nbOf(n); counts.set(k, (counts.get(k) || 0) + 1); }
+  const countDeep = id => [id, ...nbDescendants(id)].reduce((s, x) => s + (counts.get(x) || 0), 0);
+  const hidden = new Set(); for (const id of collapsed) for (const d of nbDescendants(id)) hidden.add(d);
+  for (const {nb, depth} of nbTree()) {
+    if (hidden.has(nb.id)) continue;
+    const hasKids = nbChildren(nb.id).length > 0;
+    const tw = `<span class="tw" data-twist="${esc(nb.id)}">${hasKids ? (collapsed.has(nb.id) ? '▶' : '▼') : ''}</span>`;
+    h += item('nb', nb.id, nb.name, countDeep(nb.id), `<span class="more" data-nbmenu="${esc(nb.id)}" role="button" aria-label="メニュー">⋯</span>`)
+      .replace('<button class="nav-item', `<button style="padding-left:${6 + depth * 16}px" class="nav-item`).replace('<span class="lbl">', tw + '<span class="lbl">');
+  }
   const unc = live.filter(n => !nbOf(n)).length;
-  h += item('nb', '', '未分類', unc);
+  h += item('nb', '', '未分類', unc).replace('<span class="lbl">', '<span class="tw"></span><span class="lbl">').replace('<button class="nav-item', '<button style="padding-left:6px" class="nav-item');
   const tags = new Map();
   for (const n of live) for (const t of n.tags || []) tags.set(t, (tags.get(t) || 0) + 1);
   if (tags.size) {
@@ -1387,7 +1456,7 @@ function visibleNotes(){
   } else if (f.type === 'trash') arr = arr.filter(n => n.deleted);
   else {
     arr = arr.filter(n => !n.deleted);
-    if (f.type === 'nb') arr = arr.filter(n => nbOf(n) === f.value);
+    if (f.type === 'nb') { const ids = f.value ? new Set([f.value, ...nbDescendants(f.value)]) : null; arr = arr.filter(n => ids ? ids.has(nbOf(n)) : !nbOf(n)); }
     if (f.type === 'tag') arr = arr.filter(n => (n.tags || []).includes(f.value));
   }
   return arr.sort((a, b) => b.updated - a.updated);
@@ -1395,13 +1464,15 @@ function visibleNotes(){
 function listTitle(){
   if (S.query) return '検索結果';
   const f = S.filter;
-  if (f.type === 'nb') return f.value ? notebookName(f.value) : '未分類';
+  if (f.type === 'nb') return f.value ? nbPath(f.value) : '未分類';
   if (f.type === 'tag') return '# ' + f.value;
   if (f.type === 'trash') return 'ゴミ箱';
   return 'すべてのノート';
 }
 function renderList(){
   $('#listTitle').textContent = listTitle();
+  $('#listPane').classList.toggle('selmode', S.selMode); $('#selBtn').classList.toggle('on', S.selMode);
+  renderBulkBar();
   const notes = visibleNotes();
   $('#listActions').innerHTML = (S.filter.type === 'trash' && !S.query && notes.length) ? `<button class="link-btn" id="emptyTrash">ゴミ箱を空にする</button>` : '';
   if (!notes.length) {
@@ -1410,7 +1481,7 @@ function renderList(){
   }
   $('#noteList').innerHTML = notes.map(n => {
     const tags = (n.tags || []).slice(0, 3).map(t => `<span class="tag" style="--h:${tagHue(t)}">#${esc(t)}</span>`).join('');
-    return `<li class="note-item ${n.id === S.currentId ? 'active' : ''}" data-id="${esc(n.id)}">
+    return `<li class="note-item ${n.id === S.currentId && !S.selMode ? 'active' : ''} ${S.selected.has(n.id) ? 'checked' : ''}" data-id="${esc(n.id)}">
       <div class="ni-title">${n.pinned && !n.deleted ? `<span class="ni-pin" title="ピン留め中">${ICON_PIN_SM}</span> ` : ''}${esc(n.title || '無題のノート')}</div>
       <div class="ni-snip">${esc((n.text || '').slice(0, 120)) || '&nbsp;'}</div>
       <div class="ni-meta"><span>${fmtTime(n.updated)}</span><span>${esc(notebookName(n.notebookId))}</span>${n.body.includes('<img') ? '<span>🖼</span>' : ''}${tags}${n.dirty ? '<span class="unsynced" title="未同期">●</span>' : ''}</div>
@@ -1465,18 +1536,35 @@ $('#exportBtn').addEventListener('click', () => {
 $('#nav').addEventListener('click', async e => {
   const pin = e.target.closest('[data-pin]');
   if (pin) { closeDrawer(); openNote(pin.dataset.pin); return; }
+  if (S.suppressClick) return;
   if (e.target.closest('#addNb')) { addNotebook(); return; }
+  const tw = e.target.closest('[data-twist]');
+  if (tw && tw.textContent) { e.stopPropagation(); toggleCollapsed(tw.dataset.twist); return; }
   const more = e.target.closest('[data-nbmenu]');
   if (more) {
     e.stopPropagation();
     const id = more.dataset.nbmenu;
-    const k = await showMenu([{k: 'rename', label: '名前を変更'}, {k: 'delete', label: '削除', danger: true}]);
+    const k = await showMenu([{k: 'rename', label: '名前を変更'}, {k: 'child', label: 'この中にノートブックを作る'},
+      {k: 'move', label: '別のノートブックの中へ移動'}, {k: 'delete', label: '削除', danger: true}]);
     if (k === 'rename') renameNotebook(id); else if (k === 'delete') deleteNotebook(id);
+    else if (k === 'child') addNotebook(id); else if (k === 'move') chooseNbParent(id);
     return;
   }
   const b = e.target.closest('.nav-item'); if (b) setFilter(b.dataset.type, b.dataset.value);
 });
-$('#noteList').addEventListener('click', e => { const li = e.target.closest('.note-item'); if (li) openNote(li.dataset.id); });
+$('#noteList').addEventListener('click', e => {
+  if (S.suppressClick) return;
+  const li = e.target.closest('.note-item'); if (!li) return;
+  const id = li.dataset.id;
+  if (e.shiftKey && S.lastClicked) {   // 範囲選択
+    const ids = [...$('#noteList').querySelectorAll('.note-item')].map(x => x.dataset.id);
+    const a = ids.indexOf(S.lastClicked), b = ids.indexOf(id);
+    if (a >= 0 && b >= 0) { S.selMode = true; ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => S.selected.add(x)); renderList(); return; }
+  }
+  if (e.ctrlKey || e.metaKey) { S.selMode = true; }
+  if (S.selMode) { S.selected.has(id) ? S.selected.delete(id) : S.selected.add(id); S.lastClicked = id; renderList(); return; }
+  S.lastClicked = id; openNote(id);
+});
 $('#listActions').addEventListener('click', async e => {
   if (!e.target.closest('#emptyTrash')) return;
   const del = [...S.notes.values()].filter(n => n.deleted);
@@ -2089,6 +2177,158 @@ $('#cmtList').addEventListener('click', e => {
   spans.forEach(s => { s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash'); setTimeout(() => s.classList.remove('flash'), 1300); });
   setTimeout(() => showCmtPop(spans[0]), 450);
 });
+
+/* ---------------- 複数選択と一括操作 ---------------- */
+function setSelMode(on){ S.selMode = on; if (!on) S.selected.clear(); renderList(); }
+$('#selBtn').addEventListener('click', () => setSelMode(!S.selMode));
+function renderBulkBar(){
+  const bar = $('#bulkBar');
+  if (!S.selMode) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const n = S.selected.size, trash = S.filter.type === 'trash' && !S.query;
+  bar.innerHTML = `<span class="n">${n}件</span><button data-b="all">全選択</button>` + (n ? (trash
+    ? `<button data-b="restore">復元</button><button data-b="purge" class="danger">完全に削除</button>`
+    : `<button data-b="move">移動</button><button data-b="tag">タグ</button><button data-b="pin">ピン</button><button data-b="trash" class="danger">ゴミ箱へ</button>`) : '')
+    + `<span style="flex:1"></span><button data-b="done" class="done">完了</button>`;
+}
+async function chooseNotebook(title){
+  const items = [{k: '__none', label: '未分類'}, ...nbTree().filter(x => x.nb.id !== 'templates' || true).map(x => ({k: x.nb.id, label: '　'.repeat(x.depth) + x.nb.name}))];
+  const k = await showMenu(items); if (!k) return undefined;
+  return k === '__none' ? null : k;
+}
+async function moveNotes(ids, nbId){
+  await flushSave();
+  let c = 0;
+  for (const id of ids) { const n = S.notes.get(id); if (!n || n.deleted || (n.notebookId || null) === (nbId || null)) continue;
+    n.notebookId = nbId || null; n.updated = now(); n.dirty = true; await storeNote(n); c++; }
+  if (S.currentId && ids.includes(S.currentId)) { const n = S.notes.get(S.currentId); renderNbSelect(n); S.loadedUpdated = n.updated; }
+  renderAll(); scheduleSync();
+  toast(`${c}件を「${nbId ? nbById(nbId).name : '未分類'}」に移動しました`);
+}
+async function trashNotes(ids){
+  await flushSave();
+  let c = 0;
+  for (const id of ids) { const n = S.notes.get(id); if (!n || n.deleted) continue; n.deleted = true; n.updated = now(); n.dirty = true; await storeNote(n); c++; }
+  if (S.currentId && ids.includes(S.currentId)) { S.currentId = null; showEditor(false); if (isNarrow()) setView('list'); }
+  S.selected.clear(); renderAll(); scheduleSync();
+  toast(`${c}件をゴミ箱に移動しました`);
+}
+async function tagNotes(ids, tag){
+  await flushSave();
+  for (const id of ids) { const n = S.notes.get(id); if (!n || n.deleted || (n.tags || []).includes(tag)) continue;
+    n.tags = [...(n.tags || []), tag]; n.updated = now(); n.dirty = true; await storeNote(n);
+    if (id === S.currentId) { S.editTags = n.tags.slice(); renderTagChips(); S.loadedUpdated = n.updated; } }
+  renderAll(); scheduleSync(); toast(`${ids.length}件に「#${tag}」を付けました`);
+}
+$('#bulkBar').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const ids = [...S.selected];
+  switch (b.dataset.b){
+    case 'done': setSelMode(false); break;
+    case 'all': visibleNotes().forEach(n => S.selected.add(n.id)); renderList(); break;
+    case 'move': { const nb = await chooseNotebook(); if (nb !== undefined) { await moveNotes(ids, nb); setSelMode(false); } break; }
+    case 'tag': { const t = (prompt('付けるタグ（# は不要）') || '').replace(/^#+/, '').trim(); if (t) { await tagNotes(ids, t); setSelMode(false); } break; }
+    case 'pin': {
+      const all = ids.every(id => S.notes.get(id)?.pinned);
+      for (const id of ids) { const n = S.notes.get(id); if (!n) continue; n.pinned = all ? 0 : (n.pinned || now()); n.rev = now(); n.dirty = true; await storeNote(n); }
+      if (S.currentId) updatePinBtn(S.notes.get(S.currentId));
+      renderAll(); scheduleSync(); toast(all ? 'ピン留めを外しました' : 'ピン留めしました'); setSelMode(false); break;
+    }
+    case 'trash': if (confirm(`${ids.length}件をゴミ箱に移動しますか？`)) { await trashNotes(ids); setSelMode(false); } break;
+    case 'restore':
+      for (const id of ids) { const n = S.notes.get(id); if (!n) continue; n.deleted = false; n.updated = now(); n.dirty = true; await storeNote(n); }
+      renderAll(); scheduleSync(); toast(`${ids.length}件を復元しました`); setSelMode(false); break;
+    case 'purge':
+      if (!confirm(`${ids.length}件を完全に削除しますか？\n（Googleドライブ上ではゴミ箱に移動し、30日間は復元できます）`)) break;
+      for (const id of ids) { const n = S.notes.get(id); if (n) await purge(n); }
+      if (S.currentId && !S.notes.has(S.currentId)) { S.currentId = null; showEditor(false); }
+      setSelMode(false); renderAll(); scheduleSync(1000); break;
+  }
+});
+
+/* ---------------- ドラッグで移動（ノート→ノートブック/タグ/ゴミ箱、ノートブック→ノートブック） ---------------- */
+const DRAG = {cand: null, active: false};
+function dragTargetAt(x, y){
+  const el = document.elementFromPoint(x, y); if (!el) return null;
+  const sec = el.closest('[data-nbroot]'); if (sec && DRAG.kind === 'nb') return sec;
+  const t = el.closest('#nav .nav-item, #nav .pin-item'); if (!t) return null;
+  if (DRAG.kind === 'note') return (t.dataset.type === 'nb' || t.dataset.type === 'tag' || t.dataset.type === 'trash' || t.classList.contains('pin-item')) ? t : null;
+  if (DRAG.kind === 'nb') return (t.dataset.type === 'nb' && t.dataset.value && t.dataset.value !== DRAG.ids[0] && !nbDescendants(DRAG.ids[0]).has(t.dataset.value)) ? t : null;
+  return null;
+}
+function startDrag(){
+  DRAG.active = true; document.body.classList.add('dragging-note');
+  const g = $('#dragGhost'); g.hidden = false;
+  if (DRAG.kind === 'note') {
+    const first = S.notes.get(DRAG.ids[0]);
+    g.textContent = '📄 ' + (first?.title || '無題のノート') + (DRAG.ids.length > 1 ? `　ほか${DRAG.ids.length - 1}件` : '');
+    DRAG.ids.forEach(id => $('#noteList').querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add('dragging'));
+    if (isNarrow()) openDrawer();
+  } else g.textContent = '📒 ' + (nbById(DRAG.ids[0])?.name || '');
+  if (navigator.vibrate) try { navigator.vibrate(15); } catch {}
+}
+function moveDrag(x, y){
+  const g = $('#dragGhost'); g.style.left = x + 'px'; g.style.top = y + 'px';
+  const t = dragTargetAt(x, y);
+  if (DRAG.hi !== t) { DRAG.hi?.classList.remove('drop-hi'); t?.classList.add('drop-hi'); DRAG.hi = t; }
+  const nav = $('#nav'), r = nav.getBoundingClientRect();   // 端に来たら左列をスクロール
+  if (x >= r.left && x <= r.right) { if (y < r.top + 40) nav.scrollTop -= 12; else if (y > r.bottom - 40) nav.scrollTop += 12; }
+}
+async function endDrag(cancel){
+  const t = DRAG.hi; DRAG.hi?.classList.remove('drop-hi'); DRAG.hi = null;
+  document.body.classList.remove('dragging-note'); $('#dragGhost').hidden = true;
+  document.querySelectorAll('.note-item.dragging').forEach(x => x.classList.remove('dragging'));
+  const wasActive = DRAG.active; DRAG.active = false; DRAG.cand = null;
+  if (wasActive) { S.suppressClick = true; setTimeout(() => { S.suppressClick = false; }, 350); }
+  if (!wasActive || cancel || !t) return;
+  const ids = DRAG.ids;
+  if (DRAG.kind === 'nb') { await setNbParent(ids[0], t.dataset.nbroot ? null : t.dataset.value); return; }
+  if (t.classList.contains('pin-item')) {
+    for (const id of ids) { const n = S.notes.get(id); if (!n || n.pinned) continue; n.pinned = now(); n.rev = now(); n.dirty = true; await storeNote(n); }
+    if (S.currentId) updatePinBtn(S.notes.get(S.currentId)); renderAll(); scheduleSync(); toast('ピン留めしました'); return;
+  }
+  if (t.dataset.type === 'nb') { await moveNotes(ids, t.dataset.value || null); if (S.selMode) setSelMode(false); if (isNarrow()) closeDrawer(); return; }
+  if (t.dataset.type === 'tag') { await tagNotes(ids, t.dataset.value); if (isNarrow()) closeDrawer(); return; }
+  if (t.dataset.type === 'trash') {
+    if (isNarrow()) closeDrawer();
+    const k = await showMenu([{k: 'trash', label: `${ids.length}件のノートをゴミ箱に移動`, danger: true}, {k: 'x', label: 'キャンセル'}]);
+    if (k === 'trash') { await trashNotes(ids); if (S.selMode) setSelMode(false); }
+  }
+}
+function beginDragCandidate(e, kind, ids){
+  if (e.button > 0) return;
+  DRAG.cand = {x: e.clientX, y: e.clientY, pid: e.pointerId, touch: e.pointerType !== 'mouse', el: e.currentTarget};
+  DRAG.kind = kind; DRAG.ids = ids;
+  if (DRAG.cand.touch) DRAG.cand.timer = setTimeout(() => { if (DRAG.cand) { try { DRAG.cand.el.setPointerCapture(DRAG.cand.pid); } catch {} startDrag(); moveDrag(DRAG.cand.x, DRAG.cand.y); } }, 450);
+}
+function onDragMove(e){
+  const c = DRAG.cand; if (!c || e.pointerId !== c.pid) return;
+  if (!DRAG.active) {
+    const d = Math.hypot(e.clientX - c.x, e.clientY - c.y);
+    if (c.touch) { if (d > 8) { clearTimeout(c.timer); DRAG.cand = null; } return; }   // 長押し前に動いたらスクロール扱い
+    if (d < 6) return;
+    try { c.el.setPointerCapture(c.pid); } catch {}
+    startDrag();
+  }
+  moveDrag(e.clientX, e.clientY);
+}
+function onDragUp(e){ const c = DRAG.cand; if (!c || e.pointerId !== c.pid) return; clearTimeout(c.timer); endDrag(e.type === 'pointercancel'); }
+$('#noteList').addEventListener('pointerdown', e => {
+  const li = e.target.closest('.note-item'); if (!li) return;
+  const id = li.dataset.id;
+  const ids = S.selMode && S.selected.has(id) ? [...S.selected] : [id];
+  beginDragCandidate({button: e.button, clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId, pointerType: e.pointerType, currentTarget: li}, 'note', ids);
+});
+$('#nav').addEventListener('pointerdown', e => {
+  const b = e.target.closest('.nav-item[data-type="nb"]'); if (!b || !b.dataset.value || e.target.closest('[data-nbmenu],[data-twist]')) return;
+  beginDragCandidate({button: e.button, clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId, pointerType: e.pointerType, currentTarget: b}, 'nb', [b.dataset.value]);
+});
+document.addEventListener('pointermove', onDragMove);
+document.addEventListener('pointerup', onDragUp);
+document.addEventListener('pointercancel', onDragUp);
+document.addEventListener('touchmove', e => { if (DRAG.active) e.preventDefault(); }, {passive: false});
+document.addEventListener('contextmenu', e => { if (DRAG.active || (DRAG.cand && DRAG.cand.touch)) e.preventDefault(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && DRAG.active) endDrag(true); });
 
 /* ---------------- boot ---------------- */
 (async () => {
