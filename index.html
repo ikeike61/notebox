@@ -121,7 +121,38 @@ body[data-full] .ed-body{max-width:960px;width:100%;margin:0 auto}
 .ed-head select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 8px;max-width:45vw}
 .spacer{flex:1}
 .save-state{font-size:12px;color:var(--mute);white-space:nowrap}
-.ed-body{flex:1;overflow:auto;min-height:0;padding:18px 28px 80px}
+.ed-body{flex:1;overflow:auto;min-height:0;padding:18px 28px 80px;position:relative}
+#editor img.sel{outline:3px solid var(--accent);outline-offset:2px}
+#imgBar{position:absolute;z-index:6;display:flex;gap:2px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.15);padding:3px;white-space:nowrap}
+#imgBar button{height:30px;padding:0 9px;border-radius:7px;font-size:13px;color:var(--fg)}
+#imgBar button:hover{background:var(--sel)}
+#imgBar button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+#imgBar button.danger{color:var(--danger)}
+#imgBar .pct{font-size:12px;color:var(--mute);padding:0 6px;min-width:3.5em;text-align:center}
+#imgHandle{position:absolute;z-index:6;width:22px;height:22px;border-radius:50%;background:var(--accent);border:3px solid var(--panel);box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:nwse-resize;touch-action:none}
+#imgHandle::after{content:"";position:absolute;inset:-10px}
+#imgBar[hidden],#imgHandle[hidden]{display:none}
+#editor td.cell-dark,#editor th.cell-dark{background:#2f7a63;color:#fff;border-color:#25624f}
+#editor td.cell-dark a,#editor th.cell-dark a{color:#e3f0eb}
+#editor td.cell-light,#editor th.cell-light{background:#dcefe6}
+@media (prefers-color-scheme: dark){
+  #editor td.cell-dark,#editor th.cell-dark{background:#2b6e59;color:#f0f7f4;border-color:#3f8a73}
+  #editor td.cell-light,#editor th.cell-light{background:rgba(95,184,152,.2)}
+}
+#tableBar .sw{width:26px;min-width:26px;padding:0;border-radius:6px;border:1px solid var(--line)}
+#tableBar .sw-dark{background:#2f7a63}#tableBar .sw-light{background:#dcefe6}
+#tableBar .sw-none{background:var(--panel);position:relative;overflow:hidden}
+#tableBar .sw-none::after{content:"";position:absolute;left:-4px;right:-4px;top:50%;border-top:1.5px solid var(--danger);transform:rotate(-45deg)}
+#tableBar .sep{width:1px;align-self:stretch;background:var(--line);margin:4px 4px;flex:none}
+.toolbar button:disabled{opacity:.3;cursor:default}
+#histList{list-style:none;margin:0;padding:0;max-height:60vh;overflow:auto}
+#histList li{display:flex;gap:10px;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:14px}
+#histList li:hover{background:var(--sel)}
+#histList li .t{color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums;flex:none}
+#histList li .l{flex:1}
+#histList li.cur{background:var(--accent-soft);font-weight:600}
+#histList li.cur .l::after{content:"　← 現在";color:var(--accent);font-weight:400;font-size:12px}
+#histList li.future{opacity:.45}
 #title{width:100%;border:0;outline:none;background:none;font-size:24px;font-weight:700;padding:4px 0}
 .toolbar{display:flex;gap:2px;flex-wrap:nowrap;overflow-x:auto;padding:6px 10px;border-bottom:1px solid var(--line);scrollbar-width:none}
 .toolbar::-webkit-scrollbar{display:none}
@@ -249,6 +280,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button class="icon-btn danger" id="deleteBtn" aria-label="削除">🗑</button>
       </header>
       <div class="toolbar" id="toolbar">
+        <button data-cmd="undo" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶</button>
+        <button data-cmd="redo" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す">↷</button>
+        <button data-cmd="hist" title="操作履歴" aria-label="操作履歴">🕘</button>
+        <span class="sep"></span>
         <button data-cmd="h" title="見出し（4段階）">見出し ▾</button>
         <button data-cmd="b" title="太字"><b>B</b></button>
         <button data-cmd="i" title="斜体"><i>I</i></button>
@@ -272,6 +307,12 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button data-t="delRow" class="danger">−行</button>
         <button data-t="delCol" class="danger">−列</button>
         <button data-t="delTable" class="danger">表を削除</button>
+        <span class="sep"></span>
+        <span class="lbl">色：</span>
+        <button data-t="cDark" class="sw sw-dark" title="濃い緑" aria-label="濃い緑"></button>
+        <button data-t="cLight" class="sw sw-light" title="薄い緑" aria-label="薄い緑"></button>
+        <button data-t="cNone" class="sw sw-none" title="色なし" aria-label="色なし"></button>
+        <button data-t="scope" id="scopeBtn" title="色を塗る範囲">範囲：セル</button>
       </div>
       <div class="ed-body">
         <input id="title" placeholder="タイトル" autocomplete="off">
@@ -282,6 +323,12 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
           <datalist id="tagList"></datalist>
         </div>
         <div id="editor" contenteditable="true"></div>
+        <div id="imgBar" hidden>
+          <span class="pct" id="imgPct"></span>
+          <button data-w="25">小</button><button data-w="50">中</button><button data-w="75">大</button><button data-w="100">幅いっぱい</button>
+          <button data-w="0">元のサイズ</button><button data-w="del" class="danger">削除</button>
+        </div>
+        <div id="imgHandle" hidden title="ドラッグで大きさを変更"></div>
       </div>
       <input type="file" id="fileInput" multiple hidden>
     </div>
@@ -319,6 +366,14 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <div class="row end"><button value="close">閉じる</button></div>
   </form>
 </dialog>
+<dialog id="histDlg">
+  <div class="dlg">
+    <h3>操作履歴</h3>
+    <p class="hint">項目を選ぶと、その時点の状態に戻ります（戻したあとも、新しい操作をするまでは先の状態にやり直せます）。履歴はノートを開いている間だけ保持されます。</p>
+    <ul id="histList"></ul>
+    <div class="row end"><button type="button" id="histClose">閉じる</button></div>
+  </div>
+</dialog>
 <dialog id="menu"><div class="menu-items" id="menuItems"></div></dialog>
 
 <script>
@@ -351,7 +406,7 @@ const isNarrow = () => matchMedia('(max-width:899px)').matches;
 
 const ALLOWED = new Set(['P','DIV','BR','B','STRONG','I','EM','U','S','STRIKE','DEL','MARK','SUB','SUP','H1','H2','H3','H4','H5','H6','TABLE','THEAD','TBODY','TR','TD','TH','FIGURE','FIGCAPTION','UL','OL','LI','A','IMG','BLOCKQUOTE','PRE','CODE','HR','SPAN']);
 const DROP = new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','LINK','META','TEMPLATE','FORM','INPUT','BUTTON','TEXTAREA','SELECT','svg','SVG','math','MATH']);
-const CLASSES = new Set(['check','done','att']);
+const CLASSES = new Set(['check','done','att','cell-dark','cell-light']);
 function sanitize(html){
   const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
   (function walk(node){
@@ -365,6 +420,7 @@ function sanitize(html){
           const c = a.value.split(/\s+/).filter(x => CLASSES.has(x));
           c.length ? el.setAttribute('class', c.join(' ')) : el.removeAttribute('class');
         } else if (n === 'data-att' || n === 'data-name' || n === 'alt') {
+        } else if (n === 'data-w' && el.tagName === 'IMG' && /^\d{1,3}$/.test(a.value)) {
         } else if (n === 'contenteditable' && el.tagName === 'A') {
         } else if (n === 'href' && /^https?:/i.test(a.value)) {
         } else if (n === 'src' && el.tagName === 'IMG' && !el.hasAttribute('data-att') && /^https?:/i.test(a.value)) {
@@ -655,6 +711,7 @@ async function uploadPendingAttachments(f){
       for (const n of S.notes.values()){
         if (!n.body.includes(a.id)) continue;
         n.body = n.body.split(a.id).join(fid); n.dirty = true;  // 更新日時は変えない
+        const hh = H.get(n.id); if (hh) hh.stack.forEach(s => { s.html = s.html.split(a.id).join(fid); });
         if (n.id === open) S.loadedUpdated = n.updated;
         await storeNote(n);
       }
@@ -701,6 +758,7 @@ async function downscale(file){
 }
 async function insertAttachment(file){
   const n = S.notes.get(S.currentId); if (!n || n.deleted) return;
+  histBefore();
   let blob = file, name = file.name || 'file', mime = file.type || 'application/octet-stream';
   if (/^image\/(jpeg|png|webp|heic|heif)$/.test(mime) && file.size > 1.5e6) {
     const r = await downscale(file);
@@ -715,7 +773,7 @@ async function insertAttachment(file){
   else
     document.execCommand('insertHTML', false, `<a class="att" data-att="${id}" data-name="${esc(name)}" contenteditable="false">📎 ${esc(name)}</a>&nbsp;`);
   await hydrate($('#editor'));
-  onEdit(); scheduleSync(1500);
+  onEdit('画像・ファイルの添付'); scheduleSync(1500);
 }
 async function openAttachment(a){
   const blob = await getAttBlob(a.dataset.att).catch(() => null);
@@ -729,12 +787,17 @@ async function openAttachment(a){
 /* ---------------- editor ---------------- */
 const editorEl = $('#editor'), titleEl = $('#title');
 let saveTimer = null;
-function onEdit(){ clearTimeout(saveTimer); $('#saveState').textContent = '編集中…'; saveTimer = setTimeout(saveCurrent, 500); }
+function onEdit(label){
+  clearTimeout(saveTimer); $('#saveState').textContent = '編集中…'; saveTimer = setTimeout(saveCurrent, 500);
+  if (S.histApplying) return;
+  if (typeof label === 'string') histCommit(label); else histTyping();
+}
 async function flushSave(){ if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; await saveCurrent(); } }
 function editorHTML(){
   const c = editorEl.cloneNode(true);
   c.querySelectorAll('img[data-att]').forEach(i => { i.removeAttribute('src'); i.classList.remove('missing'); i.removeAttribute('class'); });
-  c.querySelectorAll('.cur').forEach(x => { x.classList.remove('cur'); if (!x.className) x.removeAttribute('class'); });
+  c.querySelectorAll('.cur,.sel').forEach(x => { x.classList.remove('cur', 'sel'); if (!x.className) x.removeAttribute('class'); });
+  c.querySelectorAll('img').forEach(i => i.removeAttribute('style'));
   return c.innerHTML;
 }
 async function saveCurrent(){
@@ -772,9 +835,11 @@ function loadIntoEditor(n){
   $('#restoreBtn').hidden = !ro;
   $('#deleteBtn').title = ro ? '完全に削除' : 'ゴミ箱へ';
   renderNbSelect(n); updateSaveState(n);
-  hydrate(editorEl);
+  deselectImage(); applyImgSizes(editorEl); hydrate(editorEl);
+  histInit(n);
 }
 async function openNote(id, {push = true} = {}){
+  histBefore();
   if (saveTimer) await flushSave();
   const prev = S.currentId;
   S.currentId = id;   // 先に切り替える（直後の入力が前のノートに入らないように）
@@ -834,6 +899,7 @@ const HEADINGS = [
   {k: 'h1', label: '大見出し（見出し1）'}, {k: 'h2', label: '中見出し（見出し2）'},
   {k: 'h3', label: '小見出し（見出し3）'}, {k: 'h4', label: '見出し4'}, {k: 'p', label: '本文に戻す'}];
 async function headingMenu(){
+  histBefore();
   const caret = getCaretOffset();
   const cur = closestInEditor('h1,h2,h3,h4,h5,h6');
   const curTag = cur ? cur.tagName.toLowerCase() : 'p';
@@ -844,7 +910,7 @@ async function headingMenu(){
   if (closestInEditor('td,th')) { toast('表の中では見出しを使えません'); return; }
   document.execCommand('formatBlock', false, `<${k}>`);
   if (caret != null) setCaretOffset(caret);
-  onEdit();
+  onEdit('見出しの変更');
 }
 
 /* tables */
@@ -862,15 +928,44 @@ function updateTableBar(){
   $('#tableBar').hidden = !cell;
 }
 function insertTable(rows = 3, cols = 3){
+  histBefore();
   if (closestInEditor('td,th')) { toast('表の中には表を挿入できません'); return; }
   const row = '<tr>' + '<td><br></td>'.repeat(cols) + '</tr>';
   document.execCommand('insertHTML', false, `<table id="nb-new"><tbody>${row.repeat(rows)}</tbody></table><p><br></p>`);
   const t = editorEl.querySelector('#nb-new');
   if (t) { t.removeAttribute('id'); placeCaret(t.rows[0].cells[0]); }
-  onEdit();
+  onEdit('表の挿入');
+}
+const TABLE_LABEL = {rowAbove: '表：行を追加', rowBelow: '表：行を追加', colLeft: '表：列を追加', colRight: '表：列を追加',
+  header: '表：見出し行の切り替え', delRow: '表：行を削除', delCol: '表：列を削除'};
+let cellScope = (() => { try { return localStorage.getItem('nb.cellScope') || 'cell'; } catch { return 'cell'; } })();
+const SCOPE_LABEL = {cell: 'セル', row: '行', col: '列'};
+function updateScopeBtn(){ $('#scopeBtn').textContent = '範囲：' + SCOPE_LABEL[cellScope]; }
+function colorTargets(cell){
+  const table = cell.closest('table'), ci = cell.cellIndex;
+  if (cellScope === 'row') return [...cell.parentElement.cells];
+  if (cellScope === 'col') return [...table.rows].map(r => r.cells[Math.min(ci, r.cells.length - 1)]).filter(Boolean);
+  const sel = getSelection();
+  if (sel.rangeCount && !sel.isCollapsed) {
+    const r = sel.getRangeAt(0);
+    const hit = [...table.querySelectorAll('td,th')].filter(c => r.intersectsNode(c));
+    if (hit.length) return hit;
+  }
+  return [cell];
 }
 function tableOp(op){
+  if (op === 'scope') {
+    cellScope = {cell: 'row', row: 'col', col: 'cell'}[cellScope];
+    try { localStorage.setItem('nb.cellScope', cellScope); } catch {}
+    updateScopeBtn(); return;
+  }
   const cell = closestInEditor('td,th') || curCell; if (!cell || !editorEl.contains(cell)) return;
+  histBefore();
+  if (op === 'cDark' || op === 'cLight' || op === 'cNone') {
+    const cls = {cDark: 'cell-dark', cLight: 'cell-light', cNone: ''}[op];
+    for (const c of colorTargets(cell)) { c.classList.remove('cell-dark', 'cell-light'); if (cls) c.classList.add(cls); }
+    onEdit(cls ? 'セルに色を付ける' : 'セルの色を消す'); return;
+  }
   const row = cell.parentElement, table = cell.closest('table'), ci = cell.cellIndex;
   const rows = [...table.rows];
   const mk = (tag = 'td') => { const c = document.createElement(tag); c.innerHTML = '<br>'; return c; };
@@ -913,12 +1008,12 @@ function tableOp(op){
     case 'delTable': return deleteTable(table);
   }
   if (target) placeCaret(target, true);
-  onEdit(); updateTableBar();
+  onEdit(TABLE_LABEL[op] || '表の編集'); updateTableBar();
 }
 function deleteTable(table){
   if (!confirm('この表を削除しますか？')) return;
   const p = document.createElement('p'); p.innerHTML = '<br>';
-  table.replaceWith(p); placeCaret(p); curCell = null; onEdit(); updateTableBar();
+  table.replaceWith(p); placeCaret(p); curCell = null; onEdit('表の削除'); updateTableBar();
 }
 $('#tableBar').addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
 $('#tableBar').addEventListener('click', e => { const b = e.target.closest('button'); if (b) tableOp(b.dataset.t); });
@@ -945,7 +1040,11 @@ function toggleChecklist(){
 $('#toolbar').addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
 $('#toolbar').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.cmd === 'undo') { undo(); return; }
+  if (b.dataset.cmd === 'redo') { redo(); return; }
+  if (b.dataset.cmd === 'hist') { openHistory(); return; }
   if (b.dataset.cmd === 'attach') { $('#fileInput').click(); return; }
+  histBefore();
   restoreRange();
   if (b.dataset.cmd === 'h') { headingMenu(); return; }
   if (b.dataset.cmd === 'table') { insertTable(); return; }
@@ -960,14 +1059,14 @@ $('#toolbar').addEventListener('click', e => {
     case 'quote': toggleBlock('BLOCKQUOTE'); break;
   }
   if (caret != null && ['check','ul','ol','quote'].includes(b.dataset.cmd)) setCaretOffset(caret);
-  onEdit();
+  onEdit(({b: '太字', i: '斜体', s: '取り消し線', ul: '箇条書き', ol: '番号付きリスト', check: 'チェックリスト', quote: '引用'})[b.dataset.cmd] || '書式の変更');
 });
 $('#fileInput').addEventListener('change', async e => {
   const files = [...e.target.files]; e.target.value = '';
   for (const f of files) await insertAttachment(f);
 });
-editorEl.addEventListener('input', onEdit);
-titleEl.addEventListener('input', onEdit);
+editorEl.addEventListener('input', () => onEdit());
+titleEl.addEventListener('input', () => onEdit());
 
 /* tags */
 const tagHue = t => { let x = 0; for (const c of String(t)) x = (x * 31 + c.codePointAt(0)) >>> 0; return x % 360; };
@@ -978,7 +1077,7 @@ function renderTagChips(){
   const all = new Set(); for (const n of S.notes.values()) if (!n.deleted) for (const t of n.tags || []) all.add(t);
   $('#tagList').innerHTML = [...all].filter(t => !(S.editTags || []).includes(t)).sort((a,b) => a.localeCompare(b, 'ja')).map(t => `<option value="${esc(t)}">`).join('');
 }
-function setTags(tags){ S.editTags = tags; armedTag = null; renderTagChips(); onEdit(); }
+function setTags(tags){ histBefore(); S.editTags = tags; armedTag = null; renderTagChips(); onEdit('タグの変更'); }
 function openTagInput(){
   const n = S.notes.get(S.currentId); if (!n || n.deleted) return;
   const inp = $('#tagInput'); inp.hidden = false; $('#tagAdd').hidden = true; inp.value = ''; inp.focus();
@@ -1081,20 +1180,22 @@ document.querySelectorAll('.split').forEach(sp => {
 applyPaneWidths();
 titleEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); restoreRange(); } });
 editorEl.addEventListener('click', e => {
+  if (e.target.tagName === 'IMG' && editorEl.isContentEditable) { selectImage(e.target); return; }
+  deselectImage();
   const a = e.target.closest('a.att');
   if (a) { e.preventDefault(); openAttachment(a); return; }
   const link = e.target.closest('a[href]');
   if (link) { e.preventDefault(); window.open(link.href, '_blank', 'noopener'); return; }
   const li = e.target.closest('ul.check > li');
   if (li && e.target === li && editorEl.isContentEditable) {
-    if (e.clientX - li.getBoundingClientRect().left < 26) { li.classList.toggle('done'); onEdit(); }
+    if (e.clientX - li.getBoundingClientRect().left < 26) { histBefore(); li.classList.toggle('done'); onEdit(li.classList.contains('done') ? 'チェックを付ける' : 'チェックを外す'); }
   }
 });
 editorEl.addEventListener('paste', async e => {
   const files = [...(e.clipboardData?.files || [])];
   if (files.length) { e.preventDefault(); for (const f of files) await insertAttachment(f); return; }
   const text = e.clipboardData?.getData('text/plain');
-  if (text != null) { e.preventDefault(); document.execCommand('insertText', false, text); }
+  if (text != null) { e.preventDefault(); histBefore(); document.execCommand('insertText', false, text); onEdit('貼り付け'); }
 });
 editorEl.addEventListener('dragover', e => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
 editorEl.addEventListener('drop', async e => {
@@ -1493,6 +1594,167 @@ $('#importInput').addEventListener('change', async e => {
   try { const n = await importPackage(f); if (n) toast(`${n} 件のノートを取り込みました`); }
   catch (err) { console.error(err); $('#importInfo').textContent = '取り込めませんでした：' + err.message; }
 });
+
+/* ---------------- 操作履歴（元に戻す・やり直す） ---------------- */
+const H = new Map();   // noteId -> {stack: [{html,title,tags,label,at,caret}], i}
+const HIST_MAX = 150;
+let histTimer = null;
+const sameState = (a, b) => a && b && a.html === b.html && a.title === b.title && JSON.stringify(a.tags) === JSON.stringify(b.tags);
+function curState(label){
+  return {html: editorHTML(), title: titleEl.value, tags: (S.editTags || []).slice(), label, at: now(), caret: getCaretOffset()};
+}
+function pushState(h, st){
+  h.stack.length = h.i + 1; h.stack.push(st);
+  if (h.stack.length > HIST_MAX) h.stack.splice(1, h.stack.length - HIST_MAX);  // 最初（開いた時点）は残す
+  h.i = h.stack.length - 1;
+}
+function histInit(n){
+  clearTimeout(histTimer); histTimer = null;
+  const st = {html: editorHTML(), title: n.title, tags: (n.tags || []).slice(), label: '開いた時点', at: now(), caret: null};
+  const h = H.get(n.id);
+  if (!h) H.set(n.id, {stack: [st], i: 0});
+  else if (!sameState(h.stack[h.i], st)) { st.label = '他の端末での変更'; pushState(h, st); }
+  updateHistUI();
+}
+function typingLabel(prev, st){
+  if (prev && prev.html === st.html && prev.title !== st.title) return 'タイトルの変更';
+  return '文字の入力';
+}
+function histCommit(label){
+  clearTimeout(histTimer); histTimer = null;
+  const h = H.get(S.currentId); if (!h) return;
+  const st = curState(label);
+  if (sameState(h.stack[h.i], st)) return;
+  if (!label) st.label = typingLabel(h.stack[h.i], st);
+  pushState(h, st); updateHistUI();
+}
+function histTyping(){ clearTimeout(histTimer); histTimer = setTimeout(() => histCommit(null), 900); }
+function histBefore(){ if (histTimer) histCommit(null); }
+function applyState(st){
+  S.histApplying = true;
+  try {
+    deselectImage();
+    editorEl.innerHTML = st.html; titleEl.value = st.title;
+    S.editTags = st.tags.slice(); closeTagInput(false); renderTagChips();
+    curCell = null; applyImgSizes(editorEl); hydrate(editorEl); updateTableBar();
+    if (st.caret != null) { editorEl.focus(); setCaretOffset(st.caret); }
+    onEdit();
+  } finally { S.histApplying = false; }
+  updateHistUI();
+}
+function undo(){
+  histBefore();
+  const h = H.get(S.currentId); if (!h || h.i <= 0) return;
+  const undone = h.stack[h.i].label; h.i--; applyState(h.stack[h.i]); toast('元に戻しました：' + undone);
+}
+function redo(){
+  histBefore();
+  const h = H.get(S.currentId); if (!h || h.i >= h.stack.length - 1) return;
+  h.i++; applyState(h.stack[h.i]); toast('やり直しました：' + h.stack[h.i].label);
+}
+function updateHistUI(){
+  const h = H.get(S.currentId);
+  $('#toolbar [data-cmd=undo]').disabled = !h || h.i <= 0;
+  $('#toolbar [data-cmd=redo]').disabled = !h || h.i >= h.stack.length - 1;
+  if ($('#histDlg').open) renderHistory();
+}
+const fmtClock = t => new Date(t).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+function renderHistory(){
+  const h = H.get(S.currentId); if (!h) { $('#histList').innerHTML = ''; return; }
+  $('#histList').innerHTML = h.stack.map((s, k) => ({s, k})).reverse().map(({s, k}) =>
+    `<li data-k="${k}" class="${k === h.i ? 'cur' : k > h.i ? 'future' : ''}"><span class="t">${fmtClock(s.at)}</span><span class="l">${esc(s.label)}</span></li>`).join('');
+}
+function openHistory(){ histBefore(); renderHistory(); $('#histDlg').showModal(); }
+$('#histList').addEventListener('click', e => {
+  const li = e.target.closest('li'); if (!li) return;
+  const h = H.get(S.currentId), k = Number(li.dataset.k); if (!h || k === h.i) return;
+  h.i = k; applyState(h.stack[k]); toast('「' + h.stack[k].label + '」の時点に戻しました');
+});
+$('#histClose').addEventListener('click', () => $('#histDlg').close());
+$('#histDlg').addEventListener('click', e => { if (e.target === $('#histDlg')) $('#histDlg').close(); });
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase(); if (k !== 'z' && k !== 'y') return;
+  const t = e.target; if (!(editorEl.contains(t) || t === titleEl || (t === document.body && S.currentId))) return;
+  if (!editorEl.isContentEditable) return;
+  e.preventDefault();
+  if (k === 'y' || e.shiftKey) redo(); else undo();
+});
+for (const el of [editorEl, titleEl]) el.addEventListener('beforeinput', e => {
+  if (e.inputType === 'historyUndo') { e.preventDefault(); undo(); }
+  else if (e.inputType === 'historyRedo') { e.preventDefault(); redo(); }
+});
+
+/* ---------------- 画像の表示サイズ ---------------- */
+let selImg = null;
+function applyImgSizes(root){
+  root.querySelectorAll('img').forEach(i => { const w = Number(i.dataset.w); i.style.width = w ? w + '%' : ''; });
+}
+function imgBox(img){ return img.closest('td,th,li,blockquote') || editorEl; }
+function placeImgUI(){
+  if (!selImg || !editorEl.contains(selImg)) return deselectImage();
+  const body = $('#editorWrap .ed-body'), br = body.getBoundingClientRect(), r = selImg.getBoundingClientRect();
+  const top = r.top - br.top + body.scrollTop, left = r.left - br.left + body.scrollLeft;
+  const bar = $('#imgBar'); bar.hidden = false;
+  const bw = bar.offsetWidth, maxLeft = body.clientWidth - bw - 6;
+  bar.style.left = Math.max(6, Math.min(left, maxLeft)) + 'px';
+  bar.style.top = Math.max(body.scrollTop + 4, top - bar.offsetHeight - 8) + 'px';
+  const hd = $('#imgHandle'); hd.hidden = false;
+  hd.style.left = (left + r.width - 13) + 'px'; hd.style.top = (top + r.height - 13) + 'px';
+  const w = Number(selImg.dataset.w);
+  $('#imgPct').textContent = w ? w + '%' : '元';
+  bar.querySelectorAll('[data-w]').forEach(b => b.classList.toggle('on', b.dataset.w === String(w || 0)));
+}
+function selectImage(img){
+  if (selImg && selImg !== img) selImg.classList.remove('sel');
+  selImg = img; img.classList.add('sel'); placeImgUI();
+}
+function deselectImage(){
+  if (selImg) selImg.classList.remove('sel');
+  selImg = null; $('#imgBar').hidden = true; $('#imgHandle').hidden = true;
+}
+function setImgWidth(w){
+  if (!selImg) return;
+  if (w) selImg.dataset.w = String(w); else delete selImg.dataset.w;
+  applyImgSizes(editorEl); placeImgUI();
+}
+$('#imgBar').addEventListener('mousedown', e => e.preventDefault());
+$('#imgBar').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !selImg) return;
+  histBefore();
+  if (b.dataset.w === 'del') {
+    const img = selImg; deselectImage(); img.remove(); onEdit('画像の削除'); return;
+  }
+  setImgWidth(Number(b.dataset.w)); onEdit('画像サイズの変更');
+});
+$('#imgHandle').addEventListener('pointerdown', e => {
+  if (!selImg) return;
+  e.preventDefault(); const hd = e.currentTarget; hd.setPointerCapture(e.pointerId);
+  histBefore();
+  const box = imgBox(selImg).clientWidth || editorEl.clientWidth;
+  const startX = e.clientX, startW = selImg.getBoundingClientRect().width;
+  const move = ev => {
+    const px = Math.max(40, Math.min(box, startW + ev.clientX - startX));
+    setImgWidth(Math.max(5, Math.min(100, Math.round(px / box * 100))));
+  };
+  const up = ev => {
+    hd.releasePointerCapture(ev.pointerId);
+    hd.removeEventListener('pointermove', move); hd.removeEventListener('pointerup', up); hd.removeEventListener('pointercancel', up);
+    onEdit('画像サイズの変更');
+  };
+  hd.addEventListener('pointermove', move); hd.addEventListener('pointerup', up); hd.addEventListener('pointercancel', up);
+});
+editorEl.addEventListener('keydown', e => {
+  if (!selImg) return;
+  if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); histBefore(); const img = selImg; deselectImage(); img.remove(); onEdit('画像の削除'); }
+  else if (!['Shift', 'Control', 'Meta', 'Alt'].includes(e.key)) deselectImage();
+});
+editorEl.addEventListener('load', e => { if (e.target === selImg) placeImgUI(); }, true);
+window.addEventListener('resize', () => { if (selImg) placeImgUI(); });
+document.addEventListener('pointerdown', e => {
+  if (selImg && !e.target.closest('#imgBar,#imgHandle') && e.target !== selImg) deselectImage();
+}, true);
+updateScopeBtn();
 
 /* ---------------- boot ---------------- */
 (async () => {
