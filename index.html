@@ -1,0 +1,1121 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NoteBox</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#1f2a27">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+:root{
+  --bg:#f7f6f2;--panel:#ffffff;--side:#1f2a27;--side-fg:#dfe7e3;--side-mute:#8fa39b;--side-hi:#2c3b36;
+  --fg:#1d2321;--mute:#6b7571;--line:#e4e1d9;--accent:#2f7a63;--accent-fg:#fff;--accent-soft:#e3f0eb;
+  --danger:#c0453a;--sel:#eef3f0;--warn:#d49a2a;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#141816;--panel:#1b201e;--side:#0f1311;--side-fg:#d5ded9;--side-mute:#7c8c85;--side-hi:#1f2925;
+  --fg:#e6ebe8;--mute:#93a09a;--line:#2a312e;--accent:#5fb898;--accent-fg:#0f1311;--accent-soft:#1f3a31;
+  --danger:#e0685d;--sel:#232a27;--warn:#e0b04e;}
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;font-size:15px;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select{font:inherit;color:inherit}
+#app{display:grid;grid-template-columns:240px 320px 1fr;height:100vh;height:100dvh}
+
+/* sidebar */
+#sidebar{background:var(--side);color:var(--side-fg);display:flex;flex-direction:column;min-height:0;padding:14px 10px calc(12px + env(safe-area-inset-bottom))}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;padding:4px 8px 14px}
+.brand img{width:26px;height:26px;border-radius:7px}
+.new-btn{background:var(--accent);color:var(--accent-fg);border-radius:10px;padding:10px 12px;font-weight:600;text-align:left;margin-bottom:12px}
+#nav{flex:1;overflow:auto;min-height:0}
+.nav-item{display:flex;align-items:center;gap:6px;width:100%;padding:8px 10px;border-radius:8px;text-align:left;color:var(--side-fg)}
+.nav-item:hover{background:var(--side-hi)}
+.nav-item.active{background:var(--side-hi);box-shadow:inset 3px 0 0 var(--accent)}
+.nav-item .lbl{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-item .cnt{color:var(--side-mute);font-size:12px}
+.nav-item .more{color:var(--side-mute);padding:0 4px;border-radius:4px;opacity:.7}
+.nav-item .more:hover{background:rgba(255,255,255,.08);opacity:1}
+.nav-sec{display:flex;align-items:center;justify-content:space-between;color:var(--side-mute);font-size:11px;letter-spacing:.08em;padding:16px 10px 4px}
+.nav-sec .mini{color:var(--side-mute);font-size:16px;line-height:1;padding:2px 6px;border-radius:5px}
+.nav-sec .mini:hover{background:var(--side-hi);color:var(--side-fg)}
+.side-foot{border-top:1px solid rgba(255,255,255,.08);padding-top:10px;display:flex;flex-direction:column;gap:4px}
+.sync-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;color:var(--side-fg);font-size:13px;text-align:left}
+.sync-chip:hover,.side-link:hover{background:var(--side-hi)}
+.sync-chip .dot{width:8px;height:8px;border-radius:50%;background:var(--side-mute);flex:none}
+.sync-chip.ok .dot{background:#5fb898}.sync-chip.warn .dot{background:var(--warn)}.sync-chip.err .dot{background:#e0685d}
+.sync-chip.busy .dot{background:#5fb898;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.side-link{padding:8px 10px;border-radius:8px;text-align:left;font-size:13px;color:var(--side-fg)}
+
+/* list */
+#listPane{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.list-head{display:flex;align-items:center;gap:6px;padding:14px 12px 8px;padding-top:calc(14px + env(safe-area-inset-top))}
+.list-head h2{flex:1;font-size:18px;margin:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.icon-btn{min-width:36px;height:36px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;padding:0 8px;font-size:18px;color:var(--fg)}
+.icon-btn:hover{background:var(--sel)}
+.icon-btn.text{font-size:13px}
+.icon-btn.danger{color:var(--danger)}
+.mobile-only{display:none}
+.search{padding:0 12px 8px}
+.search input{width:100%;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--bg);outline:none}
+.search input:focus{border-color:var(--accent)}
+#listActions:empty{display:none}
+#listActions{padding:0 12px 8px;display:flex;justify-content:flex-end}
+.link-btn{font-size:13px;color:var(--danger);padding:4px 8px;border-radius:6px}
+.link-btn:hover{background:var(--sel)}
+#noteList{list-style:none;margin:0;padding:0;overflow:auto;flex:1;min-height:0;padding-bottom:env(safe-area-inset-bottom)}
+.note-item{padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+.note-item:hover{background:var(--sel)}
+.note-item.active{background:var(--accent-soft)}
+.ni-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ni-snip{color:var(--mute);font-size:13px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.45}
+.ni-meta{display:flex;gap:10px;color:var(--mute);font-size:11.5px;margin-top:6px;align-items:center}
+.ni-meta .tag{background:var(--sel);padding:1px 6px;border-radius:4px}
+.unsynced{color:var(--warn)}
+.list-empty{color:var(--mute);text-align:center;padding:40px 20px;font-size:14px}
+
+/* editor */
+#editorPane{background:var(--panel);display:flex;flex-direction:column;min-height:0;min-width:0}
+.empty{margin:auto;color:var(--mute);padding:20px;text-align:center}
+#editorWrap{display:flex;flex-direction:column;min-height:0;flex:1}
+#editorWrap[hidden]{display:none}
+.ed-head{display:flex;align-items:center;gap:6px;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));border-bottom:1px solid var(--line)}
+.ed-head select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 8px;max-width:45vw}
+.spacer{flex:1}
+.save-state{font-size:12px;color:var(--mute);white-space:nowrap}
+.ed-body{flex:1;overflow:auto;min-height:0;padding:18px 28px 80px}
+#title{width:100%;border:0;outline:none;background:none;font-size:24px;font-weight:700;padding:4px 0}
+#tags{width:100%;border:0;outline:none;background:none;font-size:13px;color:var(--mute);padding:4px 0 10px;border-bottom:1px dashed var(--line);margin-bottom:12px}
+.toolbar{display:flex;gap:2px;flex-wrap:nowrap;overflow-x:auto;padding:6px 10px;border-bottom:1px solid var(--line);scrollbar-width:none}
+.toolbar::-webkit-scrollbar{display:none}
+.toolbar button{min-width:34px;height:32px;border-radius:7px;padding:0 8px;font-size:14px;white-space:nowrap;color:var(--fg)}
+.toolbar button:hover{background:var(--sel)}
+.toolbar .sep{width:1px;background:var(--line);margin:6px 4px;flex:none}
+#editor{outline:none;line-height:1.75;min-height:50vh;word-break:break-word}
+#editor:empty::before{content:"ここに書く…";color:var(--mute)}
+#editor h1,#editor h2{font-size:19px;margin:18px 0 6px}
+#editor h3{font-size:16px}
+#editor p{margin:0 0 6px}
+#editor blockquote{margin:8px 0;padding:4px 14px;border-left:3px solid var(--accent);color:var(--mute)}
+#editor img{max-width:100%;height:auto;border-radius:8px;display:block;margin:8px 0;background:var(--sel)}
+#editor img.missing{min-height:80px;min-width:160px;border:1px dashed var(--line)}
+#editor ul,#editor ol{padding-left:24px}
+#editor ul.check{list-style:none;padding-left:0}
+#editor ul.check>li{position:relative;padding-left:28px}
+#editor ul.check>li::before{content:"";position:absolute;left:2px;top:.42em;width:15px;height:15px;border:1.6px solid var(--mute);border-radius:4px;cursor:pointer}
+#editor ul.check>li.done{color:var(--mute);text-decoration:line-through}
+#editor ul.check>li.done::before{background:var(--accent);border-color:var(--accent)}
+#editor ul.check>li.done::after{content:"";position:absolute;left:7px;top:.55em;width:4px;height:8px;border:solid var(--accent-fg);border-width:0 2px 2px 0;transform:rotate(45deg)}
+#editor a[href]{color:var(--accent)}
+#editor table{border-collapse:collapse;margin:8px 0;max-width:100%;display:block;overflow-x:auto}
+#editor td,#editor th{border:1px solid var(--line);padding:4px 8px;vertical-align:top}
+#editor figure{margin:8px 0}
+#editor pre{white-space:pre-wrap;background:var(--sel);padding:8px 10px;border-radius:6px;font-size:13px}
+#editor a.att{display:inline-block;background:var(--sel);border:1px solid var(--line);border-radius:7px;padding:2px 10px;color:var(--fg);text-decoration:none;font-size:14px;cursor:pointer;margin:2px 0}
+.readonly .toolbar{display:none}
+
+#scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:15}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#222;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;pointer-events:none;transition:.2s;z-index:50;max-width:90vw}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+dialog{max-height:90vh;overflow:auto;border:0;border-radius:14px;padding:0;background:var(--panel);color:var(--fg);box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:min(92vw,460px);width:100%}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+.dlg{padding:20px;display:flex;flex-direction:column;gap:12px}
+.dlg h3{margin:0;font-size:18px}
+.dlg label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute)}
+.dlg input{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font-size:13px}
+.dlg .row{display:flex;gap:8px;flex-wrap:wrap}
+.dlg .row.end{justify-content:flex-end}
+.dlg button{padding:9px 14px;border-radius:9px;border:1px solid var(--line);font-size:14px}
+.dlg button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.hint{font-size:12.5px;color:var(--mute);margin:0;line-height:1.6}
+#menu{max-width:min(80vw,300px)}
+.dlg h4{margin:8px 0 0;font-size:15px;border-top:1px solid var(--line);padding-top:14px}
+.dlg textarea{width:100%;height:64px;font:12px/1.4 ui-monospace,Menlo,monospace;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);resize:vertical}
+#banner{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:40;background:var(--panel);color:var(--fg);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.18);border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;font-size:14px;width:max-content;max-width:94vw}
+#banner button{border-radius:8px;padding:7px 12px;font-size:13px;white-space:nowrap;flex:none}
+#banner span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#banner .primary{background:var(--accent);color:var(--accent-fg)}
+.menu-items{display:flex;flex-direction:column;padding:6px}
+.menu-items button{padding:12px 14px;text-align:left;border-radius:8px}
+.menu-items button:hover{background:var(--sel)}
+.menu-items button.danger{color:var(--danger)}
+
+@media (max-width:1100px){#app{grid-template-columns:220px 280px 1fr}}
+@media (max-width:899px){
+  #app{grid-template-columns:1fr;grid-template-rows:1fr}
+  #sidebar{position:fixed;top:0;bottom:0;left:0;width:min(82vw,300px);z-index:20;transform:translateX(-102%);transition:transform .22s ease;padding-top:calc(14px + env(safe-area-inset-top))}
+  body[data-drawer="open"] #sidebar{transform:none}
+  body[data-drawer="open"] #scrim{display:block}
+  #listPane,#editorPane{grid-column:1;grid-row:1;border-right:0}
+  body[data-view="list"] #editorPane{display:none}
+  body[data-view="editor"] #listPane{display:none}
+  .mobile-only{display:inline-flex}
+  .ed-body{padding:14px 16px 120px}
+  #title{font-size:21px}
+}
+</style>
+</head>
+<body data-view="list">
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand"><img src="icon.svg" alt=""><span>NoteBox</span></div>
+    <button id="newNoteSide" class="new-btn">＋ 新しいノート</button>
+    <nav id="nav"></nav>
+    <div class="side-foot">
+      <button id="syncChip" class="sync-chip"><span class="dot"></span><span id="syncText">未接続</span></button>
+      <button id="openSettings" class="side-link">⚙︎ 設定</button>
+    </div>
+  </aside>
+
+  <section id="listPane">
+    <header class="list-head">
+      <button class="icon-btn mobile-only" id="menuBtn" aria-label="メニュー">☰</button>
+      <h2 id="listTitle">すべてのノート</h2>
+      <button class="icon-btn" id="newNoteList" aria-label="新しいノート">＋</button>
+    </header>
+    <div class="search"><input id="search" type="search" placeholder="検索（スペース区切りでAND）" autocomplete="off"></div>
+    <div id="listActions"></div>
+    <ul id="noteList"></ul>
+  </section>
+
+  <main id="editorPane">
+    <div id="emptyEditor" class="empty">ノートを選ぶか、新しく作成してください</div>
+    <div id="editorWrap" hidden>
+      <header class="ed-head">
+        <button class="icon-btn mobile-only" id="backBtn" aria-label="戻る">‹</button>
+        <select id="nbSelect" aria-label="ノートブック"></select>
+        <span class="spacer"></span>
+        <span id="saveState" class="save-state"></span>
+        <button class="icon-btn text" id="restoreBtn" hidden>復元</button>
+        <button class="icon-btn danger" id="deleteBtn" aria-label="削除">🗑</button>
+      </header>
+      <div class="toolbar" id="toolbar">
+        <button data-cmd="h" title="見出し">見出し</button>
+        <button data-cmd="b" title="太字"><b>B</b></button>
+        <button data-cmd="i" title="斜体"><i>I</i></button>
+        <button data-cmd="s" title="取り消し線"><s>S</s></button>
+        <span class="sep"></span>
+        <button data-cmd="check" title="チェックリスト">☑︎</button>
+        <button data-cmd="ul" title="箇条書き">•≡</button>
+        <button data-cmd="ol" title="番号付き">1≡</button>
+        <button data-cmd="quote" title="引用">❝</button>
+        <span class="sep"></span>
+        <button data-cmd="attach" title="画像・ファイルを添付">📎 添付</button>
+      </div>
+      <div class="ed-body">
+        <input id="title" placeholder="タイトル" autocomplete="off">
+        <input id="tags" placeholder="タグ（カンマ区切り）" autocomplete="off">
+        <div id="editor" contenteditable="true"></div>
+      </div>
+      <input type="file" id="fileInput" multiple hidden>
+    </div>
+  </main>
+</div>
+<div id="scrim"></div>
+<div id="toast"></div>
+<div id="banner" hidden><span id="bannerText"></span><button class="primary" id="bannerAct"></button><button id="bannerClose" aria-label="閉じる">✕</button></div>
+
+<dialog id="settings">
+  <form method="dialog" class="dlg">
+    <h3>設定</h3>
+    <label>Google OAuth クライアントID
+      <input id="cidInput" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+    </label>
+    <p class="hint">保存先はGoogleドライブの「NoteBox」フォルダです。このアプリが作ったファイル以外にはアクセスしません。</p>
+    <div class="row">
+      <button type="button" id="connectBtn" class="primary">Googleに接続して同期</button>
+      <button type="button" id="disconnectBtn">接続解除</button>
+    </div>
+    <p id="syncInfo" class="hint"></p>
+    <div class="row"><button type="button" id="exportBtn">バックアップを書き出す（JSON）</button></div>
+    <h4>Webクリップ</h4>
+    <p class="hint"><b>ブックマークレット</b>：ブラウザのブックマークのURL欄にこれを貼り付けて保存。記事を開いてそのブックマークを選ぶとクリップされます（文章を選択してから使うと選択部分だけ）。</p>
+    <textarea id="bmCode" readonly></textarea>
+    <div class="row"><button type="button" data-copy="bmCode">コピー</button></div>
+    <p class="hint"><b>iPhoneショートカット用</b>：「Webページで JavaScript を実行」アクションに貼り付けます（手順はREADME）。</p>
+    <textarea id="scCode" readonly></textarea>
+    <div class="row"><button type="button" data-copy="scCode">コピー</button></div>
+    <div class="row end"><button value="close">閉じる</button></div>
+  </form>
+</dialog>
+<dialog id="menu"><div class="menu-items" id="menuItems"></div></dialog>
+
+<script>
+'use strict';
+// ここにクライアントIDを書いておくと、各端末での入力が不要になります（設定画面での入力が優先）
+const DEFAULT_CLIENT_ID = '';
+
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const ROOT_NAME = 'NoteBox';
+const API = 'https://www.googleapis.com/drive/v3';
+const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+
+/* ---------------- utilities ---------------- */
+const $ = s => document.querySelector(s);
+const now = () => Date.now();
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => String(s || '').normalize('NFKC').toLowerCase();
+function fmtTime(t){
+  const d = new Date(t), n = new Date();
+  if (d.toDateString() === n.toDateString()) return d.toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+  if (d.getFullYear() === n.getFullYear()) return `${d.getMonth()+1}/${d.getDate()}`;
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+}
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 3200);
+}
+const isNarrow = () => matchMedia('(max-width:899px)').matches;
+
+const ALLOWED = new Set(['P','DIV','BR','B','STRONG','I','EM','U','S','STRIKE','DEL','MARK','SUB','SUP','H1','H2','H3','H4','H5','H6','TABLE','THEAD','TBODY','TR','TD','TH','FIGURE','FIGCAPTION','UL','OL','LI','A','IMG','BLOCKQUOTE','PRE','CODE','HR','SPAN']);
+const DROP = new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','LINK','META','TEMPLATE','FORM','INPUT','BUTTON','TEXTAREA','SELECT','svg','SVG','math','MATH']);
+const CLASSES = new Set(['check','done','att']);
+function sanitize(html){
+  const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
+  (function walk(node){
+    for (const el of [...node.children]){
+      if (DROP.has(el.tagName)) { el.remove(); continue; }
+      walk(el);
+      if (!ALLOWED.has(el.tagName)) { el.replaceWith(...el.childNodes); continue; }
+      for (const a of [...el.attributes]){
+        const n = a.name;
+        if (n === 'class'){
+          const c = a.value.split(/\s+/).filter(x => CLASSES.has(x));
+          c.length ? el.setAttribute('class', c.join(' ')) : el.removeAttribute('class');
+        } else if (n === 'data-att' || n === 'data-name' || n === 'alt') {
+        } else if (n === 'contenteditable' && el.tagName === 'A') {
+        } else if (n === 'href' && /^https?:/i.test(a.value)) {
+        } else if (n === 'src' && el.tagName === 'IMG' && !el.hasAttribute('data-att') && /^https?:/i.test(a.value)) {
+        } else if ((n === 'colspan' || n === 'rowspan') && /^\d+$/.test(a.value)) {
+        } else el.removeAttribute(n);
+      }
+    }
+  })(doc.body);
+  return doc.body.innerHTML;
+}
+function htmlToText(html){
+  const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
+  doc.body.querySelectorAll('p,div,li,h1,h2,h3,br,blockquote,pre').forEach(e => e.append(' '));
+  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+}
+const parseTags = s => [...new Set(String(s).split(/[,，、]/).map(t => t.trim()).filter(Boolean))];
+
+/* ---------------- IndexedDB ---------------- */
+const db = {
+  _db: null,
+  open(){
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('notebox', 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        d.createObjectStore('notes', {keyPath: 'id'});
+        d.createObjectStore('kv');
+        d.createObjectStore('blobs');
+      };
+      r.onsuccess = () => { this._db = r.result; res(); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  _tx(store, mode, fn){
+    return new Promise((res, rej) => {
+      const t = this._db.transaction(store, mode);
+      const req = fn(t.objectStore(store));
+      t.oncomplete = () => res(req ? req.result : undefined);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error);
+    });
+  },
+  get(s, k){ return this._tx(s, 'readonly', st => st.get(k)); },
+  put(s, v, k){ return this._tx(s, 'readwrite', st => k === undefined ? st.put(v) : st.put(v, k)); },
+  del(s, k){ return this._tx(s, 'readwrite', st => st.delete(k)); },
+  all(s){ return this._tx(s, 'readonly', st => st.getAll()); },
+};
+
+/* ---------------- state ---------------- */
+const S = {
+  notes: new Map(), notebooks: [],
+  filter: {type: 'all', value: ''}, query: '',
+  currentId: null, loadedUpdated: null, range: null,
+  token: null, tokenExp: 0,
+  syncing: false, syncAgain: false, error: '', lastSyncAt: 0,
+};
+async function storeNote(n){ S.notes.set(n.id, n); await db.put('notes', n); }
+function normalizeNote(d){
+  const body = sanitize(d.body || '');
+  return {
+    id: d.id, title: String(d.title || ''), body, text: htmlToText(body),
+    notebookId: d.notebookId || null, tags: Array.isArray(d.tags) ? d.tags.map(String) : [],
+    created: Number(d.created) || now(), updated: Number(d.updated) || now(), deleted: !!d.deleted,
+  };
+}
+const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted});
+const activeNotebooks = () => S.notebooks.filter(n => !n.deleted).sort((a,b) => a.name.localeCompare(b.name, 'ja'));
+const nbOf = n => (n.notebookId && S.notebooks.some(b => b.id === n.notebookId && !b.deleted)) ? n.notebookId : '';
+const notebookName = id => (S.notebooks.find(b => b.id === id && !b.deleted) || {name:'未分類'}).name;
+
+/* ---------------- Google auth ---------------- */
+const clientId = () => (localStorage.getItem('nb.clientId') || DEFAULT_CLIENT_ID).trim();
+const hasToken = () => !!S.token && now() < S.tokenExp;
+class AuthError extends Error { constructor(){ super('Googleへの再接続が必要です'); this.auth = true; } }
+function loadGis(){
+  return new Promise((res, rej) => {
+    if (window.google?.accounts?.oauth2) return res();
+    const ex = document.getElementById('gis');
+    if (ex) { ex.addEventListener('load', res); ex.addEventListener('error', () => rej(new Error('Googleのスクリプトを読み込めません'))); return; }
+    const s = document.createElement('script');
+    s.id = 'gis'; s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+    s.onload = res; s.onerror = () => { s.remove(); rej(new Error('Googleのスクリプトを読み込めません（オフライン？）')); };
+    document.head.appendChild(s);
+  });
+}
+async function signIn(){
+  const cid = clientId();
+  if (!cid) { openSettings(); throw new Error('クライアントIDが未設定です'); }
+  await loadGis();
+  return new Promise((res, rej) => {
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: cid, scope: SCOPE,
+      callback: r => {
+        if (r.error) return rej(new Error('ログイン失敗: ' + r.error));
+        S.token = r.access_token; S.tokenExp = now() + (Number(r.expires_in || 3600) - 60) * 1000;
+        localStorage.setItem('nb.token', JSON.stringify({t: S.token, e: S.tokenExp}));
+        localStorage.setItem('nb.signedIn', '1');
+        res();
+      },
+      error_callback: e => rej(new Error(e?.type === 'popup_closed' ? 'ログインがキャンセルされました'
+        : e?.type === 'popup_failed_to_open' ? 'ポップアップがブロックされました' : 'ログインに失敗しました')),
+    });
+    tc.requestAccessToken({prompt: localStorage.getItem('nb.signedIn') ? '' : 'consent'});
+  });
+}
+function signOut(){
+  if (S.token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(S.token, () => {});
+  S.token = null; S.tokenExp = 0;
+  localStorage.removeItem('nb.token'); localStorage.removeItem('nb.signedIn');
+  updateChip(); renderSettings();
+}
+
+/* ---------------- Drive API ---------------- */
+async function gfetch(url, opts = {}){
+  if (!hasToken()) throw new AuthError();
+  const r = await fetch(url, {...opts, headers: {...(opts.headers || {}), Authorization: 'Bearer ' + S.token}});
+  if (r.status === 401) { S.token = null; localStorage.removeItem('nb.token'); throw new AuthError(); }
+  if (!r.ok) { const e = new Error(`Drive API ${r.status}: ${(await r.text()).slice(0, 160)}`); e.status = r.status; throw e; }
+  return r;
+}
+const gjson = async (url, opts) => (await gfetch(url, opts)).json();
+const download = id => gfetch(`${API}/files/${id}?alt=media`);
+async function findOrCreateFolder(name, parent){
+  let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  if (parent) q += ` and '${parent}' in parents`;
+  const r = await gjson(`${API}/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive`);
+  if (r.files.length) return r.files[0].id;
+  const c = await gjson(`${API}/files?fields=id`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, mimeType: 'application/vnd.google-apps.folder', ...(parent ? {parents: [parent]} : {})}),
+  });
+  return c.id;
+}
+async function ensureFolders(){
+  let f = await db.get('kv', 'folders');
+  if (f) {
+    try { const r = await gjson(`${API}/files/${f.root}?fields=id,trashed`); if (!r.trashed) return f; }
+    catch (e) { if (e.auth) throw e; }
+  }
+  const root = await findOrCreateFolder(ROOT_NAME);
+  const att = await findOrCreateFolder('attachments', root);
+  f = {root, att}; await db.put('kv', f, 'folders'); return f;
+}
+async function uploadFile({fileId, name, mime, data, parent, appProperties}){
+  const meta = {};
+  if (appProperties) meta.appProperties = appProperties;
+  if (!fileId) { meta.name = name; meta.parents = [parent]; meta.mimeType = mime; }
+  const b = 'nb' + uid().replace(/-/g, '');
+  const body = new Blob([
+    `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: ${mime}\r\n\r\n`,
+    data, `\r\n--${b}--`,
+  ]);
+  const url = fileId ? `${UPLOAD}/files/${fileId}?uploadType=multipart&fields=id` : `${UPLOAD}/files?uploadType=multipart&fields=id`;
+  const r = await gjson(url, {method: fileId ? 'PATCH' : 'POST', headers: {'Content-Type': `multipart/related; boundary=${b}`}, body});
+  return r.id;
+}
+async function listFolder(parent, kind){
+  const out = []; let pt = '';
+  const q = `'${parent}' in parents and trashed=false and appProperties has { key='kind' and value='${kind}' }`;
+  do {
+    const r = await gjson(`${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,appProperties)&pageSize=1000${pt ? '&pageToken=' + encodeURIComponent(pt) : ''}`);
+    out.push(...r.files); pt = r.nextPageToken;
+  } while (pt);
+  return out;
+}
+async function isGone(fileId){
+  try { const r = await gjson(`${API}/files/${fileId}?fields=trashed`); return !!r.trashed; }
+  catch (e) { if (e.status === 404) return true; throw e; }
+}
+
+/* ---------------- sync ---------------- */
+let syncTimer;
+function scheduleSync(ms = 3000){ clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(), ms); }
+async function sync({interactive = false} = {}){
+  if (S.syncing) { S.syncAgain = true; return; }
+  if (!navigator.onLine) { updateChip(); return; }
+  if (!hasToken()) {
+    if (!interactive) { updateChip(); return; }
+    try { await signIn(); } catch (e) { S.error = e.message; toast(e.message); updateChip(); return; }
+  }
+  S.syncing = true; S.error = ''; updateChip();
+  try {
+    await flushSave();
+    const f = await ensureFolders();
+    await uploadPendingAttachments(f);
+    await processPendingTrash();
+    await syncNotebooks(f);
+    await syncNotes(f);
+    S.lastSyncAt = now(); await db.put('kv', S.lastSyncAt, 'lastSync');
+  } catch (e) {
+    console.error(e);
+    S.error = e.auth ? '' : e.message;
+    if (interactive && !e.auth) toast('同期エラー: ' + e.message);
+  } finally {
+    S.syncing = false;
+    renderAll(); refreshEditorAfterSync(); renderSettings();
+    if (S.syncAgain) { S.syncAgain = false; scheduleSync(1000); }
+  }
+}
+function mergeNotebooks(a, b){
+  const m = new Map();
+  for (const nb of [...a, ...b]) { const cur = m.get(nb.id); if (!cur || nb.updated > cur.updated) m.set(nb.id, nb); }
+  return [...m.values()];
+}
+const nbKey = arr => JSON.stringify([...arr].sort((x,y) => x.id < y.id ? -1 : 1));
+async function syncNotebooks(f){
+  const files = await listFolder(f.root, 'meta');
+  const fileId = files[0]?.id;
+  const remote = fileId ? ((await (await download(fileId)).json()).notebooks || []) : [];
+  const merged = mergeNotebooks(remote, S.notebooks);
+  if (nbKey(merged) !== nbKey(S.notebooks)) { S.notebooks = merged; await db.put('kv', merged, 'notebooks'); }
+  if (!fileId || nbKey(merged) !== nbKey(remote)) {
+    await uploadFile({fileId, name: 'notebooks.json', mime: 'application/json', data: JSON.stringify({notebooks: merged}), parent: f.root, appProperties: {kind: 'meta'}});
+  }
+}
+async function makeConflictCopy(local, remoteData){
+  if (local.title === (remoteData.title || '') && local.body === sanitize(remoteData.body || '')) return;
+  const copy = {...local, id: uid(), title: (local.title || '無題') + '（競合コピー）', fileId: null, syncedAt: null, dirty: true, updated: now()};
+  await storeNote(copy);
+  toast('別の端末と編集が重なったため「競合コピー」を作成しました');
+}
+async function syncNotes(f){
+  const remote = await listFolder(f.root, 'note');
+  const seen = new Set();
+  for (const r of remote){
+    const p = r.appProperties || {}; const id = p.noteId;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const ru = Number(p.updated) || 0;
+    let l = S.notes.get(id);
+    if (l && l.syncedAt === ru) { if (l.fileId !== r.id) { l.fileId = r.id; await storeNote(l); } continue; }
+    // remote changed (or new to this device)
+    const data = await (await download(r.id)).json();
+    l = S.notes.get(id);
+    if (l && l.dirty) await makeConflictCopy(l, data);
+    await storeNote({...normalizeNote(data), fileId: r.id, syncedAt: ru, dirty: false});
+  }
+  // files deleted on another device
+  for (const l of [...S.notes.values()]){
+    if (!l.fileId || seen.has(l.id)) continue;
+    if (!(await isGone(l.fileId))) continue;
+    if (l.dirty) { l.fileId = null; l.syncedAt = null; await storeNote(l); }
+    else { S.notes.delete(l.id); await db.del('notes', l.id); }
+  }
+  // upload local changes
+  const pendingAtt = new Set(((await db.get('kv', 'pendingAtt')) || []).map(a => a.id));
+  for (const l of [...S.notes.values()]){
+    if (!l.dirty) continue;
+    if ([...pendingAtt].some(a => l.body.includes(a))) continue; // 添付のアップロード待ち
+    const snap = serialize(l);
+    const fid = await uploadFile({fileId: l.fileId, name: `note-${l.id}.json`, mime: 'application/json',
+      data: JSON.stringify(snap), parent: f.root, appProperties: {kind: 'note', noteId: l.id, updated: String(snap.updated)}});
+    const cur = S.notes.get(l.id); if (!cur) continue;
+    cur.fileId = fid; cur.syncedAt = snap.updated;
+    if (cur.updated === snap.updated) cur.dirty = false;
+    await storeNote(cur);
+  }
+}
+async function uploadPendingAttachments(f){
+  let list = (await db.get('kv', 'pendingAtt')) || [];
+  for (const a of [...list]){
+    const blob = await db.get('blobs', a.id);
+    if (blob) {
+      const fid = await uploadFile({name: a.name, mime: a.mime || 'application/octet-stream', data: blob, parent: f.att, appProperties: {kind: 'att'}});
+      await db.put('blobs', blob, fid); await db.del('blobs', a.id);
+      if (urlCache.has(a.id)) urlCache.set(fid, urlCache.get(a.id));
+      const open = S.currentId;
+      if (open) $('#editor').querySelectorAll(`[data-att="${a.id}"]`).forEach(e => e.dataset.att = fid);
+      for (const n of S.notes.values()){
+        if (!n.body.includes(a.id)) continue;
+        n.body = n.body.split(a.id).join(fid); n.updated = now(); n.dirty = true;
+        if (n.id === open) S.loadedUpdated = n.updated;
+        await storeNote(n);
+      }
+    }
+    list = list.filter(x => x.id !== a.id); await db.put('kv', list, 'pendingAtt');
+  }
+}
+async function processPendingTrash(){
+  let list = (await db.get('kv', 'pendingTrash')) || [];
+  for (const id of [...list]){
+    try {
+      await gfetch(`${API}/files/${id}?fields=id`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({trashed: true})});
+    } catch (e) { if (e.status !== 404) throw e; }
+    list = list.filter(x => x !== id); await db.put('kv', list, 'pendingTrash');
+  }
+}
+
+/* ---------------- attachments ---------------- */
+const urlCache = new Map();
+async function getAttBlob(id){
+  const b = await db.get('blobs', id); if (b) return b;
+  if (id.startsWith('local-') || !hasToken() || !navigator.onLine) return null;
+  const nb = await (await download(id)).blob();
+  await db.put('blobs', nb, id); return nb;
+}
+async function hydrate(root){
+  for (const el of root.querySelectorAll('img[data-att]')){
+    const id = el.dataset.att;
+    let u = urlCache.get(id);
+    if (!u) { try { const b = await getAttBlob(id); if (b) { u = URL.createObjectURL(b); urlCache.set(id, u); } } catch (e) {} }
+    if (u) { el.src = u; el.classList.remove('missing'); } else el.classList.add('missing');
+  }
+}
+async function downscale(file){
+  try {
+    const bmp = await createImageBitmap(file);
+    const s = Math.min(1, 2048 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    return await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+  } catch { return null; }
+}
+async function insertAttachment(file){
+  const n = S.notes.get(S.currentId); if (!n || n.deleted) return;
+  let blob = file, name = file.name || 'file', mime = file.type || 'application/octet-stream';
+  if (/^image\/(jpeg|png|webp|heic|heif)$/.test(mime) && file.size > 1.5e6) {
+    const r = await downscale(file);
+    if (r) { blob = r; mime = 'image/jpeg'; name = name.replace(/\.\w+$/, '') + '.jpg'; }
+  }
+  const id = 'local-' + uid();
+  await db.put('blobs', blob, id);
+  const pend = (await db.get('kv', 'pendingAtt')) || []; pend.push({id, name, mime}); await db.put('kv', pend, 'pendingAtt');
+  restoreRange();
+  if (/^image\/(jpeg|png|gif|webp|svg\+xml|avif|bmp)$/.test(mime))
+    document.execCommand('insertHTML', false, `<img data-att="${id}" alt="${esc(name)}"><br>`);
+  else
+    document.execCommand('insertHTML', false, `<a class="att" data-att="${id}" data-name="${esc(name)}" contenteditable="false">📎 ${esc(name)}</a>&nbsp;`);
+  await hydrate($('#editor'));
+  onEdit(); scheduleSync(1500);
+}
+async function openAttachment(a){
+  const blob = await getAttBlob(a.dataset.att).catch(() => null);
+  if (!blob) { toast('オンラインでGoogleに接続すると開けます'); return; }
+  const u = URL.createObjectURL(blob);
+  const link = document.createElement('a'); link.href = u; link.download = a.dataset.name || 'file'; link.target = '_blank';
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 60000);
+}
+
+/* ---------------- editor ---------------- */
+const editorEl = $('#editor'), titleEl = $('#title'), tagsEl = $('#tags');
+let saveTimer = null;
+function onEdit(){ clearTimeout(saveTimer); $('#saveState').textContent = '編集中…'; saveTimer = setTimeout(saveCurrent, 500); }
+async function flushSave(){ if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; await saveCurrent(); } }
+function editorHTML(){
+  const c = editorEl.cloneNode(true);
+  c.querySelectorAll('img[data-att]').forEach(i => { i.removeAttribute('src'); i.classList.remove('missing'); i.removeAttribute('class'); });
+  return c.innerHTML;
+}
+async function saveCurrent(){
+  saveTimer = null;
+  const n = S.notes.get(S.currentId); if (!n || n.deleted) return;
+  const title = titleEl.value, body = editorHTML(), tags = parseTags(tagsEl.value);
+  if (title === n.title && body === n.body && JSON.stringify(tags) === JSON.stringify(n.tags)) { updateSaveState(n); return; }
+  Object.assign(n, {title, body, text: htmlToText(body), tags, updated: now(), dirty: true});
+  S.loadedUpdated = n.updated;
+  await storeNote(n);
+  updateSaveState(n); renderList(); renderNav(); updateChip(); scheduleSync(4000);
+}
+function updateSaveState(n){
+  $('#saveState').textContent = n.deleted ? 'ゴミ箱' : n.dirty ? '端末に保存済み' : (n.fileId ? 'ドライブと同期済み' : '');
+}
+function isEmptyNote(n){ return n && !n.title.trim() && !n.text.trim() && !n.body.includes('data-att') && !n.fileId; }
+async function cleanupEmpty(id){
+  const n = S.notes.get(id);
+  if (n && !n.deleted && isEmptyNote(n)) { S.notes.delete(id); await db.del('notes', id); }
+}
+function showEditor(on){ $('#editorWrap').hidden = !on; $('#emptyEditor').hidden = on; }
+function renderNbSelect(n){
+  const sel = $('#nbSelect'), cur = nbOf(n);
+  sel.innerHTML = `<option value="">未分類</option>` + activeNotebooks().map(b => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
+  sel.value = cur; sel.disabled = !!n.deleted;
+}
+function loadIntoEditor(n){
+  titleEl.value = n.title; tagsEl.value = (n.tags || []).join(', ');
+  editorEl.innerHTML = sanitize(n.body);
+  S.loadedUpdated = n.updated; S.range = null;
+  const ro = !!n.deleted;
+  editorEl.contentEditable = String(!ro); titleEl.readOnly = ro; tagsEl.readOnly = ro;
+  $('#editorWrap').classList.toggle('readonly', ro);
+  $('#restoreBtn').hidden = !ro;
+  $('#deleteBtn').title = ro ? '完全に削除' : 'ゴミ箱へ';
+  renderNbSelect(n); updateSaveState(n);
+  hydrate(editorEl);
+}
+async function openNote(id, {push = true} = {}){
+  await flushSave();
+  const prev = S.currentId;
+  if (prev && prev !== id) await cleanupEmpty(prev);
+  S.currentId = id;
+  const n = S.notes.get(id);
+  if (!n) { S.currentId = null; showEditor(false); setView('list'); renderAll(); return; }
+  showEditor(true); loadIntoEditor(n);
+  if (isNarrow() && document.body.dataset.view !== 'editor' && push) history.pushState({v: 'editor'}, '');
+  setView('editor'); renderAll();
+}
+async function closeEditor(){
+  await flushSave();
+  if (S.currentId) await cleanupEmpty(S.currentId);
+  S.currentId = null; showEditor(false); setView('list'); renderAll();
+}
+function refreshEditorAfterSync(){
+  if (!S.currentId) return;
+  const n = S.notes.get(S.currentId);
+  if (!n) { S.currentId = null; showEditor(false); if (isNarrow()) setView('list'); toast('このノートは別の端末で削除されました'); return; }
+  if (n.updated !== S.loadedUpdated && !saveTimer) loadIntoEditor(n);
+  else { updateSaveState(n); if (editorEl.querySelector('img.missing')) hydrate(editorEl); }
+}
+document.addEventListener('selectionchange', () => {
+  const sel = getSelection();
+  if (sel.rangeCount && editorEl.contains(sel.anchorNode)) S.range = sel.getRangeAt(0).cloneRange();
+});
+function restoreRange(){
+  const sel = getSelection();
+  if (document.activeElement === editorEl && sel.rangeCount && editorEl.contains(sel.anchorNode)) return;
+  editorEl.focus();
+  let r = S.range;
+  if (!r || !editorEl.contains(r.commonAncestorContainer)) { r = document.createRange(); r.selectNodeContents(editorEl); r.collapse(false); }
+  sel.removeAllRanges(); sel.addRange(r);
+}
+function closestInEditor(selector){
+  let n = getSelection().anchorNode;
+  while (n && n !== editorEl) { if (n.nodeType === 1 && n.matches(selector)) return n; n = n.parentNode; }
+  return null;
+}
+function getCaretOffset(){
+  const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return null;
+  const r = sel.getRangeAt(0); if (!editorEl.contains(r.startContainer)) return null;
+  const pre = document.createRange(); pre.selectNodeContents(editorEl); pre.setEnd(r.startContainer, r.startOffset);
+  return pre.toString().length;
+}
+function setCaretOffset(off){
+  const w = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT); let n, last = null;
+  while ((n = w.nextNode())) {
+    if (off <= n.length) { const r = document.createRange(); r.setStart(n, off); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return; }
+    off -= n.length; last = n;
+  }
+}
+function toggleBlock(tag){
+  const cur = closestInEditor(tag.toLowerCase());
+  document.execCommand('formatBlock', false, cur ? '<p>' : `<${tag.toLowerCase()}>`);
+}
+function toggleChecklist(){
+  let ul = closestInEditor('ul');
+  if (ul && ul.classList.contains('check')) { document.execCommand('insertUnorderedList'); return; }
+  if (!ul) { document.execCommand('insertUnorderedList'); ul = closestInEditor('ul'); }
+  if (ul) ul.classList.add('check');
+}
+$('#toolbar').addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+$('#toolbar').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.cmd === 'attach') { $('#fileInput').click(); return; }
+  restoreRange();
+  const caret = getCaretOffset();
+  switch (b.dataset.cmd){
+    case 'h': toggleBlock('H2'); break;
+    case 'b': document.execCommand('bold'); break;
+    case 'i': document.execCommand('italic'); break;
+    case 's': document.execCommand('strikeThrough'); break;
+    case 'ul': document.execCommand('insertUnorderedList'); break;
+    case 'ol': document.execCommand('insertOrderedList'); break;
+    case 'check': toggleChecklist(); break;
+    case 'quote': toggleBlock('BLOCKQUOTE'); break;
+  }
+  if (caret != null && ['h','check','ul','ol','quote'].includes(b.dataset.cmd)) setCaretOffset(caret);
+  onEdit();
+});
+$('#fileInput').addEventListener('change', async e => {
+  const files = [...e.target.files]; e.target.value = '';
+  for (const f of files) await insertAttachment(f);
+});
+editorEl.addEventListener('input', onEdit);
+titleEl.addEventListener('input', onEdit);
+tagsEl.addEventListener('input', onEdit);
+tagsEl.addEventListener('change', () => { flushSave(); });
+titleEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); restoreRange(); } });
+editorEl.addEventListener('click', e => {
+  const a = e.target.closest('a.att');
+  if (a) { e.preventDefault(); openAttachment(a); return; }
+  const link = e.target.closest('a[href]');
+  if (link) { e.preventDefault(); window.open(link.href, '_blank', 'noopener'); return; }
+  const li = e.target.closest('ul.check > li');
+  if (li && e.target === li && editorEl.isContentEditable) {
+    if (e.clientX - li.getBoundingClientRect().left < 26) { li.classList.toggle('done'); onEdit(); }
+  }
+});
+editorEl.addEventListener('paste', async e => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.length) { e.preventDefault(); for (const f of files) await insertAttachment(f); return; }
+  const text = e.clipboardData?.getData('text/plain');
+  if (text != null) { e.preventDefault(); document.execCommand('insertText', false, text); }
+});
+editorEl.addEventListener('dragover', e => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
+editorEl.addEventListener('drop', async e => {
+  const files = [...(e.dataTransfer?.files || [])]; if (!files.length) return;
+  e.preventDefault();
+  const r = document.caretRangeFromPoint?.(e.clientX, e.clientY); if (r) S.range = r;
+  for (const f of files) await insertAttachment(f);
+});
+$('#nbSelect').addEventListener('change', async e => {
+  const n = S.notes.get(S.currentId); if (!n) return;
+  await flushSave();
+  n.notebookId = e.target.value || null; n.updated = now(); n.dirty = true; S.loadedUpdated = n.updated;
+  await storeNote(n); renderAll(); scheduleSync();
+});
+$('#deleteBtn').addEventListener('click', async () => {
+  const n = S.notes.get(S.currentId); if (!n) return;
+  await flushSave();
+  if (!n.deleted) {
+    if (isEmptyNote(n)) { await closeEditor(); return; }
+    n.deleted = true; n.updated = now(); n.dirty = true;
+    await storeNote(n); toast('ゴミ箱に移動しました');
+    S.currentId = null; showEditor(false); setView('list'); renderAll(); scheduleSync();
+  } else {
+    if (!confirm('このノートを完全に削除しますか？\n（Googleドライブ上ではゴミ箱に移動し、30日間は復元できます）')) return;
+    await purge(n); S.currentId = null; showEditor(false); setView('list'); renderAll(); scheduleSync(1000);
+  }
+});
+$('#restoreBtn').addEventListener('click', async () => {
+  const n = S.notes.get(S.currentId); if (!n) return;
+  n.deleted = false; n.updated = now(); n.dirty = true; await storeNote(n);
+  loadIntoEditor(n); renderAll(); scheduleSync(); toast('復元しました');
+});
+async function purge(n){
+  if (n.fileId) { const l = (await db.get('kv', 'pendingTrash')) || []; l.push(n.fileId); await db.put('kv', l, 'pendingTrash'); }
+  S.notes.delete(n.id); await db.del('notes', n.id);
+}
+
+/* ---------------- notes & notebooks ---------------- */
+async function newNote(){
+  const f = S.filter, t = now();
+  if (f.type === 'trash') S.filter = {type: 'all', value: ''};
+  S.query = ''; $('#search').value = '';
+  const n = {id: uid(), title: '', body: '', text: '', notebookId: f.type === 'nb' && f.value ? f.value : null,
+    tags: f.type === 'tag' ? [f.value] : [], created: t, updated: t, deleted: false, dirty: false, fileId: null, syncedAt: null};
+  await storeNote(n);
+  closeDrawer();
+  await openNote(n.id);
+  titleEl.focus();
+}
+async function saveNotebooks(){ await db.put('kv', S.notebooks, 'notebooks'); scheduleSync(2000); }
+async function addNotebook(){
+  const name = prompt('新しいノートブックの名前'); if (!name || !name.trim()) return;
+  const nb = {id: uid(), name: name.trim(), updated: now(), deleted: false};
+  S.notebooks.push(nb); await saveNotebooks();
+  setFilter('nb', nb.id);
+}
+async function renameNotebook(id){
+  const nb = S.notebooks.find(b => b.id === id); if (!nb) return;
+  const name = prompt('ノートブック名を変更', nb.name); if (!name || !name.trim() || name.trim() === nb.name) return;
+  nb.name = name.trim(); nb.updated = now(); await saveNotebooks(); renderAll();
+  if (S.currentId) renderNbSelect(S.notes.get(S.currentId));
+}
+async function deleteNotebook(id){
+  const nb = S.notebooks.find(b => b.id === id); if (!nb) return;
+  if (!confirm(`ノートブック「${nb.name}」を削除しますか？\n中のノートは「未分類」に移動します。`)) return;
+  nb.deleted = true; nb.updated = now();
+  for (const n of S.notes.values()) if (n.notebookId === id) { n.notebookId = null; n.updated = now(); n.dirty = true; await storeNote(n); }
+  await saveNotebooks();
+  if (S.filter.type === 'nb' && S.filter.value === id) S.filter = {type: 'all', value: ''};
+  renderAll(); if (S.currentId) renderNbSelect(S.notes.get(S.currentId));
+}
+function showMenu(items){
+  return new Promise(res => {
+    const d = $('#menu'), box = $('#menuItems');
+    box.innerHTML = items.map(i => `<button data-k="${i.k}" class="${i.danger ? 'danger' : ''}">${esc(i.label)}</button>`).join('');
+    const done = k => { d.close(); res(k); };
+    box.onclick = e => { const b = e.target.closest('button'); if (b) done(b.dataset.k); };
+    d.onclick = e => { if (e.target === d) done(null); };
+    d.showModal();
+  });
+}
+
+/* ---------------- rendering ---------------- */
+function setView(v){ document.body.dataset.view = v; }
+function openDrawer(){ document.body.dataset.drawer = 'open'; }
+function closeDrawer(){ delete document.body.dataset.drawer; }
+function setFilter(type, value = ''){
+  S.filter = {type, value}; S.query = ''; $('#search').value = '';
+  closeDrawer(); if (isNarrow() && S.currentId) closeEditor(); else renderAll();
+}
+function renderNav(){
+  const live = [...S.notes.values()].filter(n => !n.deleted);
+  const f = S.filter;
+  const item = (type, value, label, count, extra = '') =>
+    `<button class="nav-item ${!S.query && f.type === type && f.value === value ? 'active' : ''}" data-type="${type}" data-value="${esc(value)}"><span class="lbl">${esc(label)}</span>${extra}<span class="cnt">${count}</span></button>`;
+  let h = item('all', '', '📒 すべてのノート', live.length);
+  h += `<div class="nav-sec"><span>ノートブック</span><button class="mini" id="addNb" aria-label="ノートブックを追加">＋</button></div>`;
+  for (const nb of activeNotebooks()) h += item('nb', nb.id, nb.name, live.filter(n => nbOf(n) === nb.id).length, `<span class="more" data-nbmenu="${esc(nb.id)}" role="button" aria-label="メニュー">⋯</span>`);
+  const unc = live.filter(n => !nbOf(n)).length;
+  h += item('nb', '', '未分類', unc);
+  const tags = new Map();
+  for (const n of live) for (const t of n.tags || []) tags.set(t, (tags.get(t) || 0) + 1);
+  if (tags.size) {
+    h += `<div class="nav-sec"><span>タグ</span></div>`;
+    for (const [t, c] of [...tags].sort((a,b) => a[0].localeCompare(b[0], 'ja'))) h += item('tag', t, '# ' + t, c);
+  }
+  h += `<div class="nav-sec"><span></span></div>` + item('trash', '', '🗑 ゴミ箱', S.notes.size - live.length);
+  $('#nav').innerHTML = h;
+}
+function visibleNotes(){
+  let arr = [...S.notes.values()];
+  const terms = norm(S.query).split(/\s+/).filter(Boolean);
+  const f = S.filter;
+  if (terms.length) {
+    arr = arr.filter(n => !n.deleted && (h => terms.every(t => h.includes(t)))(norm(`${n.title} ${n.text} ${(n.tags || []).join(' ')} ${notebookName(n.notebookId)}`)));
+  } else if (f.type === 'trash') arr = arr.filter(n => n.deleted);
+  else {
+    arr = arr.filter(n => !n.deleted);
+    if (f.type === 'nb') arr = arr.filter(n => nbOf(n) === f.value);
+    if (f.type === 'tag') arr = arr.filter(n => (n.tags || []).includes(f.value));
+  }
+  return arr.sort((a, b) => b.updated - a.updated);
+}
+function listTitle(){
+  if (S.query) return '検索結果';
+  const f = S.filter;
+  if (f.type === 'nb') return f.value ? notebookName(f.value) : '未分類';
+  if (f.type === 'tag') return '# ' + f.value;
+  if (f.type === 'trash') return 'ゴミ箱';
+  return 'すべてのノート';
+}
+function renderList(){
+  $('#listTitle').textContent = listTitle();
+  const notes = visibleNotes();
+  $('#listActions').innerHTML = (S.filter.type === 'trash' && !S.query && notes.length) ? `<button class="link-btn" id="emptyTrash">ゴミ箱を空にする</button>` : '';
+  if (!notes.length) {
+    $('#noteList').innerHTML = `<li class="list-empty">${S.query ? '見つかりませんでした' : S.filter.type === 'trash' ? 'ゴミ箱は空です' : 'ノートはまだありません<br>＋ で作成できます'}</li>`;
+    return;
+  }
+  $('#noteList').innerHTML = notes.map(n => {
+    const tags = (n.tags || []).slice(0, 3).map(t => `<span class="tag">${esc(t)}</span>`).join('');
+    return `<li class="note-item ${n.id === S.currentId ? 'active' : ''}" data-id="${esc(n.id)}">
+      <div class="ni-title">${esc(n.title || '無題のノート')}</div>
+      <div class="ni-snip">${esc((n.text || '').slice(0, 120)) || '&nbsp;'}</div>
+      <div class="ni-meta"><span>${fmtTime(n.updated)}</span><span>${esc(notebookName(n.notebookId))}</span>${n.body.includes('<img') ? '<span>🖼</span>' : ''}${tags}${n.dirty ? '<span class="unsynced" title="未同期">●</span>' : ''}</div>
+    </li>`;
+  }).join('');
+}
+function updateChip(){
+  const chip = $('#syncChip'), pending = [...S.notes.values()].filter(n => n.dirty).length;
+  let text, cls;
+  if (S.syncing) { text = '同期中…'; cls = 'busy'; }
+  else if (!navigator.onLine) { text = 'オフライン'; cls = ''; }
+  else if (!clientId()) { text = '同期の設定をする'; cls = 'warn'; }
+  else if (!hasToken()) { text = localStorage.getItem('nb.signedIn') ? 'タップして再接続' : 'Googleに接続'; cls = 'warn'; }
+  else if (S.error) { text = '同期エラー'; cls = 'err'; }
+  else { text = S.lastSyncAt ? '同期済み ' + fmtTime(S.lastSyncAt) : '接続済み'; cls = 'ok'; }
+  if (pending && !S.syncing) text += `・未同期 ${pending}`;
+  chip.className = 'sync-chip ' + cls; chip.title = S.error || '';
+  $('#syncText').textContent = text;
+}
+function renderAll(){ renderNav(); renderList(); updateChip(); }
+
+/* ---------------- settings ---------------- */
+function renderSettings(){
+  $('#cidInput').value = clientId();
+  $('#bmCode').value = bookmarklet(); $('#scCode').value = shortcutCode();
+  const info = [];
+  info.push(hasToken() ? 'Googleに接続中' : '未接続');
+  if (S.lastSyncAt) info.push('最終同期: ' + new Date(S.lastSyncAt).toLocaleString('ja-JP'));
+  if (S.error) info.push('エラー: ' + S.error);
+  info.push(`ノート ${[...S.notes.values()].filter(n => !n.deleted).length} 件`);
+  $('#syncInfo').textContent = info.join(' ／ ');
+}
+function openSettings(){ renderSettings(); closeDrawer(); $('#settings').showModal(); }
+$('#cidInput').addEventListener('change', e => { localStorage.setItem('nb.clientId', e.target.value.trim()); updateChip(); });
+$('#connectBtn').addEventListener('click', async () => {
+  localStorage.setItem('nb.clientId', $('#cidInput').value.trim());
+  await sync({interactive: true}); renderSettings();
+  if (!S.error && hasToken()) toast('同期しました');
+});
+$('#disconnectBtn').addEventListener('click', () => { signOut(); toast('接続を解除しました（端末内のノートは残ります）'); });
+$('#exportBtn').addEventListener('click', () => {
+  const data = {exportedAt: new Date().toISOString(), notebooks: S.notebooks, notes: [...S.notes.values()].map(serialize)};
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
+  a.download = `notebox-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+});
+
+/* ---------------- global events ---------------- */
+$('#nav').addEventListener('click', async e => {
+  if (e.target.closest('#addNb')) { addNotebook(); return; }
+  const more = e.target.closest('[data-nbmenu]');
+  if (more) {
+    e.stopPropagation();
+    const id = more.dataset.nbmenu;
+    const k = await showMenu([{k: 'rename', label: '名前を変更'}, {k: 'delete', label: '削除', danger: true}]);
+    if (k === 'rename') renameNotebook(id); else if (k === 'delete') deleteNotebook(id);
+    return;
+  }
+  const b = e.target.closest('.nav-item'); if (b) setFilter(b.dataset.type, b.dataset.value);
+});
+$('#noteList').addEventListener('click', e => { const li = e.target.closest('.note-item'); if (li) openNote(li.dataset.id); });
+$('#listActions').addEventListener('click', async e => {
+  if (!e.target.closest('#emptyTrash')) return;
+  const del = [...S.notes.values()].filter(n => n.deleted);
+  if (!confirm(`ゴミ箱の ${del.length} 件を完全に削除しますか？\n（Googleドライブ上ではゴミ箱に移動し、30日間は復元できます）`)) return;
+  for (const n of del) await purge(n);
+  if (S.currentId && !S.notes.has(S.currentId)) { S.currentId = null; showEditor(false); }
+  renderAll(); scheduleSync(1000);
+});
+let searchTimer;
+$('#search').addEventListener('input', e => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { S.query = e.target.value; renderAll(); }, 150); });
+$('#newNoteSide').addEventListener('click', newNote);
+$('#newNoteList').addEventListener('click', newNote);
+$('#menuBtn').addEventListener('click', openDrawer);
+$('#scrim').addEventListener('click', closeDrawer);
+$('#backBtn').addEventListener('click', () => { if (history.state?.v === 'editor') history.back(); else closeEditor(); });
+window.addEventListener('popstate', () => { if (document.body.dataset.view === 'editor') closeEditor(); });
+$('#openSettings').addEventListener('click', openSettings);
+$('#syncChip').addEventListener('click', () => {
+  if (!clientId()) { openSettings(); return; }
+  if (S.error) toast('同期エラー: ' + S.error);
+  sync({interactive: true});
+});
+window.addEventListener('online', () => { updateChip(); loadGis().catch(() => {}); sync(); });
+window.addEventListener('offline', updateChip);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushSave();
+  else if (now() - S.lastSyncAt > 30000) sync();
+});
+window.addEventListener('pagehide', () => { flushSave(); });
+setInterval(() => { if (document.visibilityState === 'visible') sync(); }, 120000);
+
+/* ---------------- web clip ---------------- */
+// ページ側で実行される抽出コード（ブックマークレット／iPhoneショートカット共通）
+const CLIP_SRC = `(function(){var APP='__APP__';
+function abs(u){try{return new URL(u,location.href).href}catch(e){return ''}}
+function fixImgs(src,dst){var a=src.querySelectorAll('img'),b=dst.querySelectorAll('img');for(var i=0;i<b.length;i++){var o=a[i]||b[i];var s=o.currentSrc||o.getAttribute('data-src')||o.getAttribute('data-original')||o.getAttribute('data-lazy-src')||o.getAttribute('src')||'';if(!s||s.indexOf('data:')===0){b[i].remove();continue}b[i].setAttribute('src',abs(s));b[i].removeAttribute('srcset')}}
+var sel=window.getSelection?getSelection():null,root,isSel=false;
+if(sel&&sel.rangeCount&&!sel.isCollapsed&&String(sel).trim().length>10){root=document.createElement('div');for(var i=0;i<sel.rangeCount;i++)root.appendChild(sel.getRangeAt(i).cloneContents());fixImgs(root,root);isSel=true}
+else{var best=null,bs=0,arts=document.querySelectorAll('article');
+if(arts.length===1&&arts[0].innerText.length>300){best=arts[0]}
+else{var m=new Map();[].forEach.call(document.querySelectorAll('p'),function(p){var l=p.textContent.trim().length;if(l<25)return;var a=p.parentElement,b=a&&a.parentElement;m.set(a,(m.get(a)||0)+l);if(b)m.set(b,(m.get(b)||0)+l/2)});m.forEach(function(v,k){if(v>bs){bs=v;best=k}})}
+best=best||document.querySelector('main')||document.body;root=best.cloneNode(true);fixImgs(best,root)}
+[].forEach.call(root.querySelectorAll('script,style,noscript,iframe,nav,aside,footer,form,button,input,select,textarea,svg,canvas,video,audio,[aria-hidden=true],[hidden]'),function(e){e.remove()});
+[].forEach.call(root.querySelectorAll('a[href]'),function(a){a.setAttribute('href',abs(a.getAttribute('href')))});
+var html=root.innerHTML;if(html.length>200000){html=root.innerText.slice(0,120000).split(/\\n+/).map(function(t){return '<p>'+t.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})+'</p>'}).join('')}
+var d={v:1,title:document.title,url:location.href,site:location.hostname,html:html,sel:isSel};
+var u=APP+'#clip='+encodeURIComponent(JSON.stringify(d));__OUT__})();`;
+const appUrl = () => location.origin + location.pathname.replace(/index\.html$/, '');
+const bookmarklet = () => 'javascript:' + encodeURIComponent(CLIP_SRC.replace('__APP__', appUrl())
+  .replace('__OUT__', "var w=window.open(u,'_blank');if(!w)location.href=u;").replace(/\n/g, ''));
+const shortcutCode = () => CLIP_SRC.replace('__APP__', appUrl()).replace('__OUT__', 'completion(u);');
+
+const CLIP_NB = 'webclip';
+async function ensureClipNotebook(){
+  let nb = S.notebooks.find(b => b.id === CLIP_NB);
+  if (!nb) { nb = {id: CLIP_NB, name: 'Webクリップ', updated: now(), deleted: false}; S.notebooks.push(nb); await saveNotebooks(); }
+  else if (nb.deleted) { nb.deleted = false; nb.updated = now(); await saveNotebooks(); }
+  return CLIP_NB;
+}
+function readIncomingClip(){
+  const h = location.hash;
+  if (h.startsWith('#clip=')) {
+    try { return JSON.parse(decodeURIComponent(h.slice(6))); }
+    catch (e) { toast('クリップを読み込めませんでした（ページが大きすぎる可能性）'); return null; }
+  }
+  const q = new URLSearchParams(location.search);
+  if (q.has('title') || q.has('text') || q.has('url')) {  // Android の共有メニュー
+    const text = q.get('text') || '';
+    const url = q.get('url') || (text.match(/https?:\/\/\S+/) || [''])[0];
+    return {title: q.get('title') || '', url, text: text.replace(url, '').trim()};
+  }
+  return null;
+}
+async function saveClip(c){
+  let site = c.site || '';
+  try { if (!site && c.url) site = new URL(c.url).hostname; } catch {}
+  const d = new Date();
+  const head = c.url ? `<p><a href="${esc(c.url)}">🔗 ${esc(site || c.url)}</a>　${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} クリップ</p><hr>` : '';
+  let content = '';
+  if (c.html) content = c.html;
+  else if (c.text) content = c.text.split(/\n+/).map(l => `<p>${esc(l)}</p>`).join('');
+  const body = sanitize(head + content);
+  const t = now();
+  const n = {id: uid(), title: (c.title || site || 'Webクリップ').trim(), body, text: htmlToText(body),
+    notebookId: await ensureClipNotebook(), tags: [], created: t, updated: t, deleted: false, dirty: true, fileId: null, syncedAt: null};
+  await storeNote(n);
+  S.filter = {type: 'nb', value: CLIP_NB}; S.query = '';
+  await openNote(n.id, {push: false});
+  if (hasToken()) { toast('クリップしました'); scheduleSync(500); }
+  else if (clientId()) showBanner('クリップを保存しました', 'ドライブに送る', () => sync({interactive: true}));
+  else toast('クリップしました（設定でGoogleに接続すると同期されます）');
+}
+async function handleIncomingClip(){
+  const c = readIncomingClip(); if (!c) return false;
+  history.replaceState(null, '', location.pathname);
+  await saveClip(c); return true;
+}
+function showBanner(text, actLabel, act){
+  $('#bannerText').textContent = text; $('#bannerAct').textContent = actLabel;
+  $('#bannerAct').onclick = () => { hideBanner(); act(); };
+  $('#banner').hidden = false;
+}
+function hideBanner(){ $('#banner').hidden = true; }
+$('#bannerClose').addEventListener('click', hideBanner);
+window.addEventListener('hashchange', () => { if (location.hash.startsWith('#clip=')) handleIncomingClip(); });
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
+  const ta = document.getElementById(b.dataset.copy);
+  try { await navigator.clipboard.writeText(ta.value); } catch { ta.select(); document.execCommand('copy'); }
+  toast('コピーしました');
+}));
+
+/* ---------------- boot ---------------- */
+(async () => {
+  try { await db.open(); }
+  catch (e) { alert('この端末のブラウザではデータを保存できません（プライベートモード？）'); return; }
+  for (const n of await db.all('notes')) S.notes.set(n.id, n);
+  S.notebooks = (await db.get('kv', 'notebooks')) || [];
+  S.lastSyncAt = (await db.get('kv', 'lastSync')) || 0;
+  try { const t = JSON.parse(localStorage.getItem('nb.token') || 'null'); if (t && t.e > now()) { S.token = t.t; S.tokenExp = t.e; } } catch {}
+  showEditor(false); renderAll();
+  const clipped = await handleIncomingClip();
+  if (!clipped && !isNarrow()) { const first = visibleNotes()[0]; if (first) openNote(first.id, {push: false}); }
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.storage?.persist?.().catch(() => {});
+  if (navigator.onLine && clientId()) loadGis().catch(() => {});
+  if (!clientId()) setTimeout(openSettings, 400); else sync();
+})();
+</script>
+</body>
+</html>
