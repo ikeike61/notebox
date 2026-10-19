@@ -1,5 +1,5 @@
 // オフライン用：アプリ本体をキャッシュ（Googleへの通信はキャッシュしない）
-const CACHE = 'notebox-v3';
+const CACHE = 'notebox-v4';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -13,6 +13,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (url.pathname.endsWith('.webmanifest')) return; // アプリ情報は常に最新を取得（インストール判定に使われるため）
   e.respondWith(caches.open(CACHE).then(async cache => {
     const hit = await cache.match(e.request, {ignoreSearch: true});
     const net = fetch(e.request).then(r => { if (r.ok) cache.put(e.request, r.clone()); return r; }).catch(() => hit);
