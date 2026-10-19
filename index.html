@@ -27,7 +27,37 @@ html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;font-size:15px;-webkit-text-size-adjust:100%}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 input,select{font:inherit;color:inherit}
-#app{display:grid;grid-template-columns:240px 320px 1fr;height:100vh;height:100dvh}
+#app{--sw:240px;--lw:320px;display:grid;grid-template-columns:var(--sw) 5px var(--lw) 5px minmax(0,1fr);height:100vh;height:100dvh}
+.split{cursor:col-resize;background:var(--line);position:relative;z-index:5;touch-action:none}
+.split::after{content:"";position:absolute;inset:0 -5px}
+.split:hover,.split.drag{background:var(--accent)}
+body.resizing{cursor:col-resize;user-select:none}
+body.resizing iframe,body.resizing #editor{pointer-events:none}
+body[data-full] #sidebar,body[data-full] #listPane,body[data-full] .split{display:none}
+body[data-full] #app{grid-template-columns:minmax(0,1fr)}
+body[data-full] .ed-body{max-width:960px;width:100%;margin:0 auto}
+#fullBtn{color:var(--mute)}#fullBtn:hover{color:var(--fg)}
+#pinBtn{color:var(--mute)}#pinBtn.on{color:var(--accent)}#pinBtn.on svg{fill:currentColor}
+.pin-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border-radius:8px;text-align:left;color:var(--side-fg);font-size:14px}
+.pin-item:hover{background:var(--side-hi)}
+.pin-item.active{background:var(--side-hi);box-shadow:inset 3px 0 0 var(--accent)}
+.pin-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.pin-item svg{flex:none;color:var(--accent)}
+.ni-pin{color:var(--accent);display:inline-flex}
+.tag-box{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 0 10px;border-bottom:1px dashed var(--line);margin-bottom:12px;min-height:34px}
+#tagChips{display:contents}
+.tchip{--h:160;display:inline-flex;align-items:center;gap:1px;padding:3px 10px;border-radius:999px;font-size:13px;line-height:1.4;
+  background:hsl(var(--h) 55% 92%);color:hsl(var(--h) 45% 28%);border:1px solid hsl(var(--h) 40% 80%);cursor:pointer}
+.tchip b{font-weight:700;opacity:.65;margin-right:1px}
+.tchip.armed{background:var(--danger);color:#fff;border-color:var(--danger)}
+.tag-add{font-size:13px;color:var(--mute);border:1px dashed var(--line);border-radius:999px;padding:3px 10px}
+.tag-add:hover{color:var(--accent);border-color:var(--accent)}
+#tagInput{border:1px solid var(--accent);border-radius:999px;padding:3px 10px;font-size:13px;outline:none;background:var(--bg);color:var(--fg);width:9em}
+.readonly .tag-add{display:none}.readonly .tchip{cursor:default}
+.tdot{--h:160;width:8px;height:8px;border-radius:50%;background:hsl(var(--h) 55% 55%);flex:none}
+@media (prefers-color-scheme: dark){
+  .tchip{background:hsl(var(--h) 30% 22%);color:hsl(var(--h) 60% 80%);border-color:hsl(var(--h) 30% 32%)}
+}
 
 /* sidebar */
 #sidebar{background:var(--side);color:var(--side-fg);display:flex;flex-direction:column;min-height:0;padding:14px 10px calc(12px + env(safe-area-inset-bottom))}
@@ -77,7 +107,8 @@ input,select{font:inherit;color:inherit}
 .ni-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ni-snip{color:var(--mute);font-size:13px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.45}
 .ni-meta{display:flex;gap:10px;color:var(--mute);font-size:11.5px;margin-top:6px;align-items:center}
-.ni-meta .tag{background:var(--sel);padding:1px 6px;border-radius:4px}
+.ni-meta .tag{--h:160;background:hsl(var(--h) 55% 92%);color:hsl(var(--h) 45% 30%);padding:1px 7px;border-radius:999px}
+@media (prefers-color-scheme: dark){.ni-meta .tag{background:hsl(var(--h) 30% 22%);color:hsl(var(--h) 60% 80%)}}
 .unsynced{color:var(--warn)}
 .list-empty{color:var(--mute);text-align:center;padding:40px 20px;font-size:14px}
 
@@ -92,7 +123,6 @@ input,select{font:inherit;color:inherit}
 .save-state{font-size:12px;color:var(--mute);white-space:nowrap}
 .ed-body{flex:1;overflow:auto;min-height:0;padding:18px 28px 80px}
 #title{width:100%;border:0;outline:none;background:none;font-size:24px;font-weight:700;padding:4px 0}
-#tags{width:100%;border:0;outline:none;background:none;font-size:13px;color:var(--mute);padding:4px 0 10px;border-bottom:1px dashed var(--line);margin-bottom:12px}
 .toolbar{display:flex;gap:2px;flex-wrap:nowrap;overflow-x:auto;padding:6px 10px;border-bottom:1px solid var(--line);scrollbar-width:none}
 .toolbar::-webkit-scrollbar{display:none}
 .toolbar button{flex:none;min-width:34px;height:32px;border-radius:7px;padding:0 8px;font-size:14px;white-space:nowrap;color:var(--fg)}
@@ -163,9 +193,11 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 .menu-items button:hover{background:var(--sel)}
 .menu-items button.danger{color:var(--danger)}
 
-@media (max-width:1100px){#app{grid-template-columns:220px 280px 1fr}}
+
 @media (max-width:899px){
-  #app{grid-template-columns:1fr;grid-template-rows:1fr}
+  #app{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:1fr}
+    .split,#fullBtn{display:none!important}
+  body[data-full] #sidebar,body[data-full] #listPane{display:flex}
   #sidebar{position:fixed;top:0;bottom:0;left:0;width:min(82vw,300px);z-index:20;transform:translateX(-102%);transition:transform .22s ease;padding-top:calc(14px + env(safe-area-inset-top))}
   body[data-drawer="open"] #sidebar{transform:none}
   body[data-drawer="open"] #scrim{display:block}
@@ -190,6 +222,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     </div>
   </aside>
 
+  <div class="split" data-split="sw" title="ドラッグで幅を変更（ダブルクリックで元に戻す）"></div>
   <section id="listPane">
     <header class="list-head">
       <button class="icon-btn mobile-only" id="menuBtn" aria-label="メニュー">☰</button>
@@ -201,14 +234,17 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <ul id="noteList"></ul>
   </section>
 
+  <div class="split" data-split="lw" title="ドラッグで幅を変更（ダブルクリックで元に戻す）"></div>
   <main id="editorPane">
     <div id="emptyEditor" class="empty">ノートを選ぶか、新しく作成してください</div>
     <div id="editorWrap" hidden>
       <header class="ed-head">
+        <button class="icon-btn" id="fullBtn" aria-label="大きくする" title="大きくする"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
         <button class="icon-btn mobile-only" id="backBtn" aria-label="戻る">‹</button>
         <select id="nbSelect" aria-label="ノートブック"></select>
         <span class="spacer"></span>
         <span id="saveState" class="save-state"></span>
+        <button class="icon-btn" id="pinBtn" aria-label="ピン留め" title="ピン留め"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg></button>
         <button class="icon-btn text" id="restoreBtn" hidden>復元</button>
         <button class="icon-btn danger" id="deleteBtn" aria-label="削除">🗑</button>
       </header>
@@ -239,7 +275,12 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       </div>
       <div class="ed-body">
         <input id="title" placeholder="タイトル" autocomplete="off">
-        <input id="tags" placeholder="タグ（カンマ区切り）" autocomplete="off">
+        <div class="tag-box" id="tagBox">
+          <span id="tagChips"></span>
+          <input id="tagInput" placeholder="タグ名を入力" autocomplete="off" list="tagList" hidden enterkeyhint="done">
+          <button type="button" class="tag-add" id="tagAdd">＋ タグ</button>
+          <datalist id="tagList"></datalist>
+        </div>
         <div id="editor" contenteditable="true"></div>
       </div>
       <input type="file" id="fileInput" multiple hidden>
@@ -387,9 +428,12 @@ function normalizeNote(d){
     id: d.id, title: String(d.title || ''), body, text: htmlToText(body),
     notebookId: d.notebookId || null, tags: Array.isArray(d.tags) ? d.tags.map(String) : [],
     created: Number(d.created) || now(), updated: Number(d.updated) || now(), deleted: !!d.deleted,
+    pinned: Number(d.pinned) || 0, rev: Number(d.rev) || 0,
   };
 }
-const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted});
+const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted, pinned:n.pinned || 0, rev:n.rev || 0});
+// 同期で使う版番号（ピン留めなど、更新日時を変えない変更でも上がる）
+const revOf = n => Math.max(Number(n.rev) || 0, Number(n.updated) || 0);
 const activeNotebooks = () => S.notebooks.filter(n => !n.deleted).sort((a,b) => a.name.localeCompare(b.name, 'ja'));
 const nbOf = n => (n.notebookId && S.notebooks.some(b => b.id === n.notebookId && !b.deleted)) ? n.notebookId : '';
 const notebookName = id => (S.notebooks.find(b => b.id === id && !b.deleted) || {name:'未分類'}).name;
@@ -589,10 +633,10 @@ async function syncNotes(f){
     if ([...pendingAtt].some(a => l.body.includes(a))) continue; // 添付のアップロード待ち
     const snap = serialize(l);
     const fid = await uploadFile({fileId: l.fileId, name: `note-${l.id}.json`, mime: 'application/json',
-      data: JSON.stringify(snap), parent: f.root, appProperties: {kind: 'note', noteId: l.id, updated: String(snap.updated)}});
+      data: JSON.stringify(snap), parent: f.root, appProperties: {kind: 'note', noteId: l.id, updated: String(revOf(snap))}});
     const cur = S.notes.get(l.id); if (!cur) continue;
-    cur.fileId = fid; cur.syncedAt = snap.updated;
-    if (cur.updated === snap.updated) cur.dirty = false;
+    cur.fileId = fid; cur.syncedAt = revOf(snap);
+    if (revOf(cur) === revOf(snap)) cur.dirty = false;
     await storeNote(cur);
   }
 }
@@ -683,7 +727,7 @@ async function openAttachment(a){
 }
 
 /* ---------------- editor ---------------- */
-const editorEl = $('#editor'), titleEl = $('#title'), tagsEl = $('#tags');
+const editorEl = $('#editor'), titleEl = $('#title');
 let saveTimer = null;
 function onEdit(){ clearTimeout(saveTimer); $('#saveState').textContent = '編集中…'; saveTimer = setTimeout(saveCurrent, 500); }
 async function flushSave(){ if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; await saveCurrent(); } }
@@ -696,7 +740,7 @@ function editorHTML(){
 async function saveCurrent(){
   saveTimer = null;
   const n = S.notes.get(S.currentId); if (!n || n.deleted) return;
-  const title = titleEl.value, body = editorHTML(), tags = parseTags(tagsEl.value);
+  const title = titleEl.value, body = editorHTML(), tags = (S.editTags || []).slice();
   if (title === n.title && body === n.body && JSON.stringify(tags) === JSON.stringify(n.tags)) { updateSaveState(n); return; }
   Object.assign(n, {title, body, text: htmlToText(body), tags, updated: now(), dirty: true});
   S.loadedUpdated = n.updated;
@@ -718,11 +762,12 @@ function renderNbSelect(n){
   sel.value = cur; sel.disabled = !!n.deleted;
 }
 function loadIntoEditor(n){
-  titleEl.value = n.title; tagsEl.value = (n.tags || []).join(', ');
+  titleEl.value = n.title; S.editTags = (n.tags || []).slice(); closeTagInput(false); renderTagChips();
   editorEl.innerHTML = sanitize(n.body);
   S.loadedUpdated = n.updated; S.range = null; curCell = null; $('#tableBar').hidden = true;
   const ro = !!n.deleted;
-  editorEl.contentEditable = String(!ro); titleEl.readOnly = ro; tagsEl.readOnly = ro;
+  editorEl.contentEditable = String(!ro); titleEl.readOnly = ro;
+  updatePinBtn(n);
   $('#editorWrap').classList.toggle('readonly', ro);
   $('#restoreBtn').hidden = !ro;
   $('#deleteBtn').title = ro ? '完全に削除' : 'ゴミ箱へ';
@@ -730,15 +775,18 @@ function loadIntoEditor(n){
   hydrate(editorEl);
 }
 async function openNote(id, {push = true} = {}){
-  await flushSave();
+  if (saveTimer) await flushSave();
   const prev = S.currentId;
-  if (prev && prev !== id) await cleanupEmpty(prev);
-  S.currentId = id;
+  S.currentId = id;   // 先に切り替える（直後の入力が前のノートに入らないように）
   const n = S.notes.get(id);
-  if (!n) { S.currentId = null; showEditor(false); setView('list'); renderAll(); return; }
-  showEditor(true); loadIntoEditor(n);
-  if (isNarrow() && document.body.dataset.view !== 'editor' && push) history.pushState({v: 'editor'}, '');
-  setView('editor'); renderAll();
+  if (!n) { S.currentId = null; showEditor(false); setView('list'); }
+  else {
+    showEditor(true); loadIntoEditor(n);
+    if (isNarrow() && document.body.dataset.view !== 'editor' && push) history.pushState({v: 'editor'}, '');
+    setView('editor');
+  }
+  if (prev && prev !== id) await cleanupEmpty(prev);
+  renderAll();
 }
 async function closeEditor(){
   await flushSave();
@@ -920,8 +968,117 @@ $('#fileInput').addEventListener('change', async e => {
 });
 editorEl.addEventListener('input', onEdit);
 titleEl.addEventListener('input', onEdit);
-tagsEl.addEventListener('input', onEdit);
-tagsEl.addEventListener('change', () => { flushSave(); });
+
+/* tags */
+const tagHue = t => { let x = 0; for (const c of String(t)) x = (x * 31 + c.codePointAt(0)) >>> 0; return x % 360; };
+let armedTag = null;
+function renderTagChips(){
+  $('#tagChips').innerHTML = (S.editTags || []).map((t, i) =>
+    `<span class="tchip${armedTag === i ? ' armed' : ''}" style="--h:${tagHue(t)}" data-i="${i}" title="クリックで削除"><b>#</b>${esc(t)}</span>`).join('');
+  const all = new Set(); for (const n of S.notes.values()) if (!n.deleted) for (const t of n.tags || []) all.add(t);
+  $('#tagList').innerHTML = [...all].filter(t => !(S.editTags || []).includes(t)).sort((a,b) => a.localeCompare(b, 'ja')).map(t => `<option value="${esc(t)}">`).join('');
+}
+function setTags(tags){ S.editTags = tags; armedTag = null; renderTagChips(); onEdit(); }
+function openTagInput(){
+  const n = S.notes.get(S.currentId); if (!n || n.deleted) return;
+  const inp = $('#tagInput'); inp.hidden = false; $('#tagAdd').hidden = true; inp.value = ''; inp.focus();
+}
+function closeTagInput(commit = true){
+  const inp = $('#tagInput');
+  if (commit) addTagsFrom(inp.value);
+  inp.value = ''; inp.hidden = true; $('#tagAdd').hidden = false;
+  if (armedTag !== null) { armedTag = null; renderTagChips(); }
+}
+function addTagsFrom(text){
+  const add = parseTags(String(text).replace(/^#+/, '').replace(/\s#/g, ',')).map(t => t.replace(/^#+/, '')).filter(Boolean)
+    .filter(t => !(S.editTags || []).includes(t));
+  if (add.length) setTags([...(S.editTags || []), ...add]);
+}
+async function askRemoveTag(i){
+  const t = S.editTags[i]; if (t === undefined) return;
+  const k = await showMenu([{k: 'del', label: `「#${t}」を外す`, danger: true}, {k: 'open', label: `#${t} のノート一覧を見る`}, {k: 'x', label: 'キャンセル'}]);
+  if (k === 'del') setTags(S.editTags.filter((_, j) => j !== i));
+  else if (k === 'open') { await flushSave(); setFilter('tag', t); }
+}
+$('#tagAdd').addEventListener('click', openTagInput);
+$('#tagChips').addEventListener('click', e => {
+  const c = e.target.closest('.tchip'); if (!c) return;
+  const n = S.notes.get(S.currentId); if (!n || n.deleted) return;
+  askRemoveTag(Number(c.dataset.i));
+});
+$('#tagInput').addEventListener('keydown', e => {
+  if (e.isComposing || e.keyCode === 229) return;
+  const inp = e.target;
+  if (e.key === 'Enter' || e.key === ',' || e.key === '、') { e.preventDefault(); addTagsFrom(inp.value); inp.value = ''; return; }
+  if (e.key === 'Escape') { e.preventDefault(); closeTagInput(false); return; }
+  if (e.key === 'Backspace' && inp.value === '' && (S.editTags || []).length) {
+    e.preventDefault();
+    const last = S.editTags.length - 1;
+    if (armedTag === last) setTags(S.editTags.slice(0, -1));   // 2回目で削除
+    else { armedTag = last; renderTagChips(); toast('もう一度バックスペースで「#' + S.editTags[last] + '」を外します'); }
+    return;
+  }
+  if (armedTag !== null) { armedTag = null; renderTagChips(); }
+});
+$('#tagInput').addEventListener('input', e => {
+  // スマホの変換確定後に入力された区切り文字にも対応
+  if (/[,，、]/.test(e.target.value)) { addTagsFrom(e.target.value); e.target.value = ''; }
+});
+$('#tagInput').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('#tagInput')) closeTagInput(true); }, 150));
+
+/* pin */
+function updatePinBtn(n){
+  const b = $('#pinBtn'); const on = !!(n && n.pinned);
+  b.classList.toggle('on', on); b.title = on ? 'ピン留めを外す' : 'ピン留め'; b.setAttribute('aria-label', b.title);
+  b.hidden = !!(n && n.deleted);
+}
+$('#pinBtn').addEventListener('click', async () => {
+  const n = S.notes.get(S.currentId); if (!n || n.deleted) return;
+  await flushSave();
+  n.pinned = n.pinned ? 0 : now(); n.rev = now(); n.dirty = true;
+  await storeNote(n); updatePinBtn(n); renderAll(); scheduleSync();
+  toast(n.pinned ? 'ピン留めしました' : 'ピン留めを外しました');
+});
+
+/* full screen (アプリ内で大きく表示) */
+const ICON_EXPAND = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>', ICON_SHRINK = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>';
+function setFull(on){
+  if (on) document.body.dataset.full = '1'; else delete document.body.dataset.full;
+  const b = $('#fullBtn'); b.innerHTML = on ? ICON_SHRINK : ICON_EXPAND;
+  b.title = on ? '小さくする' : '大きくする'; b.setAttribute('aria-label', b.title);
+}
+$('#fullBtn').addEventListener('click', () => setFull(!document.body.dataset.full));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.dataset.full && !document.querySelector('dialog[open]') && $('#tagInput').hidden) setFull(false); });
+
+/* splitters (パネル幅の変更) */
+const PANE = {sw: {def: 240, min: 160, max: 420}, lw: {def: 320, min: 220, max: 640}};
+function applyPaneWidths(){
+  const app = $('#app');
+  for (const k in PANE){
+    const v = Number(localStorage.getItem('nb.' + k)) || PANE[k].def;
+    app.style.setProperty('--' + k, Math.min(PANE[k].max, Math.max(PANE[k].min, v)) + 'px');
+  }
+}
+document.querySelectorAll('.split').forEach(sp => {
+  const k = sp.dataset.split;
+  sp.addEventListener('pointerdown', e => {
+    e.preventDefault(); sp.setPointerCapture(e.pointerId);
+    const startX = e.clientX, start = parseFloat(getComputedStyle($('#app')).getPropertyValue('--' + k)) || PANE[k].def;
+    sp.classList.add('drag'); document.body.classList.add('resizing');
+    const move = ev => {
+      const w = Math.min(PANE[k].max, Math.max(PANE[k].min, start + ev.clientX - startX));
+      $('#app').style.setProperty('--' + k, w + 'px');
+    };
+    const up = ev => {
+      sp.releasePointerCapture(ev.pointerId); sp.classList.remove('drag'); document.body.classList.remove('resizing');
+      sp.removeEventListener('pointermove', move); sp.removeEventListener('pointerup', up); sp.removeEventListener('pointercancel', up);
+      try { localStorage.setItem('nb.' + k, parseInt(getComputedStyle($('#app')).getPropertyValue('--' + k))); } catch {}
+    };
+    sp.addEventListener('pointermove', move); sp.addEventListener('pointerup', up); sp.addEventListener('pointercancel', up);
+  });
+  sp.addEventListener('dblclick', () => { try { localStorage.removeItem('nb.' + k); } catch {} applyPaneWidths(); });
+});
+applyPaneWidths();
 titleEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); restoreRange(); } });
 editorEl.addEventListener('click', e => {
   const a = e.target.closest('a.att');
@@ -982,10 +1139,12 @@ async function newNote(){
   S.query = ''; $('#search').value = '';
   const n = {id: uid(), title: '', body: '', text: '', notebookId: f.type === 'nb' && f.value ? f.value : null,
     tags: f.type === 'tag' ? [f.value] : [], created: t, updated: t, deleted: false, dirty: false, fileId: null, syncedAt: null};
-  await storeNote(n);
+  if (saveTimer) await flushSave();
+  S.notes.set(n.id, n);
   closeDrawer();
-  await openNote(n.id);
+  const opening = openNote(n.id);
   titleEl.focus();
+  await Promise.all([opening, db.put('notes', n)]);
 }
 async function saveNotebooks(){ await db.put('kv', S.notebooks, 'notebooks'); scheduleSync(2000); }
 async function addNotebook(){
@@ -1028,12 +1187,20 @@ function setFilter(type, value = ''){
   S.filter = {type, value}; S.query = ''; $('#search').value = '';
   closeDrawer(); if (isNarrow() && S.currentId) closeEditor(); else renderAll();
 }
+const ICON_PIN_SM = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>';
 function renderNav(){
   const live = [...S.notes.values()].filter(n => !n.deleted);
   const f = S.filter;
   const item = (type, value, label, count, extra = '') =>
     `<button class="nav-item ${!S.query && f.type === type && f.value === value ? 'active' : ''}" data-type="${type}" data-value="${esc(value)}"><span class="lbl">${esc(label)}</span>${extra}<span class="cnt">${count}</span></button>`;
-  let h = item('all', '', '📒 すべてのノート', live.length);
+  let h = '';
+  const pins = live.filter(n => n.pinned).sort((a, b) => a.pinned - b.pinned);
+  if (pins.length) {
+    h += `<div class="nav-sec" style="padding-top:2px"><span>ピン留め</span></div>`;
+    for (const n of pins) h += `<button class="pin-item ${n.id === S.currentId ? 'active' : ''}" data-pin="${esc(n.id)}">${ICON_PIN_SM}<span>${esc(n.title || '無題のノート')}</span></button>`;
+    h += `<div style="height:8px"></div>`;
+  }
+  h += item('all', '', '📒 すべてのノート', live.length);
   h += `<div class="nav-sec"><span>ノートブック</span><button class="mini" id="addNb" aria-label="ノートブックを追加">＋</button></div>`;
   for (const nb of activeNotebooks()) h += item('nb', nb.id, nb.name, live.filter(n => nbOf(n) === nb.id).length, `<span class="more" data-nbmenu="${esc(nb.id)}" role="button" aria-label="メニュー">⋯</span>`);
   const unc = live.filter(n => !nbOf(n)).length;
@@ -1042,7 +1209,7 @@ function renderNav(){
   for (const n of live) for (const t of n.tags || []) tags.set(t, (tags.get(t) || 0) + 1);
   if (tags.size) {
     h += `<div class="nav-sec"><span>タグ</span></div>`;
-    for (const [t, c] of [...tags].sort((a,b) => a[0].localeCompare(b[0], 'ja'))) h += item('tag', t, '# ' + t, c);
+    for (const [t, c] of [...tags].sort((a,b) => a[0].localeCompare(b[0], 'ja'))) h += item('tag', t, '# ' + t, c).replace('<span class="lbl">', `<span class="tdot" style="--h:${tagHue(t)}"></span><span class="lbl">`);
   }
   h += `<div class="nav-sec"><span></span></div>` + item('trash', '', '🗑 ゴミ箱', S.notes.size - live.length);
   $('#nav').innerHTML = h;
@@ -1078,9 +1245,9 @@ function renderList(){
     return;
   }
   $('#noteList').innerHTML = notes.map(n => {
-    const tags = (n.tags || []).slice(0, 3).map(t => `<span class="tag">${esc(t)}</span>`).join('');
+    const tags = (n.tags || []).slice(0, 3).map(t => `<span class="tag" style="--h:${tagHue(t)}">#${esc(t)}</span>`).join('');
     return `<li class="note-item ${n.id === S.currentId ? 'active' : ''}" data-id="${esc(n.id)}">
-      <div class="ni-title">${esc(n.title || '無題のノート')}</div>
+      <div class="ni-title">${n.pinned && !n.deleted ? `<span class="ni-pin" title="ピン留め中">${ICON_PIN_SM}</span> ` : ''}${esc(n.title || '無題のノート')}</div>
       <div class="ni-snip">${esc((n.text || '').slice(0, 120)) || '&nbsp;'}</div>
       <div class="ni-meta"><span>${fmtTime(n.updated)}</span><span>${esc(notebookName(n.notebookId))}</span>${n.body.includes('<img') ? '<span>🖼</span>' : ''}${tags}${n.dirty ? '<span class="unsynced" title="未同期">●</span>' : ''}</div>
     </li>`;
@@ -1130,6 +1297,8 @@ $('#exportBtn').addEventListener('click', () => {
 
 /* ---------------- global events ---------------- */
 $('#nav').addEventListener('click', async e => {
+  const pin = e.target.closest('[data-pin]');
+  if (pin) { closeDrawer(); openNote(pin.dataset.pin); return; }
   if (e.target.closest('#addNb')) { addNotebook(); return; }
   const more = e.target.closest('[data-nbmenu]');
   if (more) {
