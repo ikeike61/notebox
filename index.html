@@ -351,6 +351,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     </div>
     <p id="syncInfo" class="hint"></p>
     <p class="hint" id="appVer"></p>
+    <div class="row"><button type="button" id="forceUpdateBtn">最新版に更新</button></div>
     <div class="row"><button type="button" id="exportBtn">バックアップを書き出す（JSON）</button></div>
     <h4>Webクリップ</h4>
     <p class="hint"><b>ブックマークレット</b>：ブラウザのブックマークのURL欄にこれを貼り付けて保存。記事を開いてそのブックマークを選ぶとクリップされます（文章を選択してから使うと選択部分だけ）。</p>
@@ -1382,7 +1383,7 @@ function renderSettings(){
   info.push(`ノート ${[...S.notes.values()].filter(n => !n.deleted).length} 件`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.19-9';
+const APP_VERSION = '2026.10.19-10';
 function openSettings(){
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
 $('#cidInput').addEventListener('change', e => { localStorage.setItem('nb.clientId', e.target.value.trim()); updateChip(); });
@@ -1807,6 +1808,33 @@ document.addEventListener('pointerdown', e => {
 }, true);
 updateScopeBtn();
 
+/* ---------------- アプリの更新確認 ---------------- */
+async function forceUpdate(){
+  try { await flushSave(); } catch {}
+  toast('最新版に更新しています…');
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.() || [];
+    await Promise.all(regs.map(r => r.update().catch(() => {})));
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k.startsWith('notebox-')).map(k => caches.delete(k)));
+  } catch {}
+  location.replace(location.pathname + '?v=' + Date.now());
+}
+let lastVerCheck = 0;
+async function checkForUpdate(){
+  if (!navigator.onLine || now() - lastVerCheck < 10 * 60 * 1000) return;
+  lastVerCheck = now();
+  try {
+    const r = await fetch('version.json?t=' + now(), {cache: 'no-store'});
+    if (!r.ok) return;
+    const {version} = await r.json();
+    if (version && version !== APP_VERSION) showBanner('新しい版のアプリがあります', '更新する', forceUpdate);
+  } catch {}
+}
+$('#forceUpdateBtn').addEventListener('click', forceUpdate);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
+if (location.search.includes('v=')) history.replaceState(null, '', location.pathname + location.hash);
+
 /* ---------------- boot ---------------- */
 (async () => {
   try { await db.open(); }
@@ -1822,6 +1850,7 @@ updateScopeBtn();
   navigator.storage?.persist?.().catch(() => {});
   if (navigator.onLine && clientId()) loadGis().catch(() => {});
   if (!clientId()) setTimeout(openSettings, 400); else sync();
+  setTimeout(checkForUpdate, 1500);
 })();
 </script>
 </body>
