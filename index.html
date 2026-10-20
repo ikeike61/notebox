@@ -276,7 +276,12 @@ body.dragging-note,body.dragging-note *{cursor:grabbing!important;user-select:no
 #editor a.nlink::before{content:"📄 ";font-size:.85em}
 #editor a.nlink.nl-broken{color:var(--mute);background:var(--sel);text-decoration:line-through}
 #linkPop{position:absolute;z-index:8;width:min(320px,calc(100% - 12px));background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:4px;max-height:260px;overflow:auto}
-#linkPop[hidden]{display:none}
+#linkPop[hidden],#slashPop[hidden]{display:none}
+#slashPop{position:absolute;z-index:8;width:min(260px,calc(100% - 12px));background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:4px;max-height:300px;overflow:auto}
+#slashPop .it{display:flex;gap:10px;align-items:center;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:14px}
+#slashPop .it .ic{width:22px;text-align:center;color:var(--mute);font-size:13px}
+#slashPop .it.on,#slashPop .it:hover{background:var(--accent-soft)}
+#slashPop .hd{font-size:11px;color:var(--mute);padding:4px 10px}
 #linkPop .it,#linkList .it{padding:8px 10px;border-radius:7px;cursor:pointer;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #linkPop .it small,#linkList .it small{color:var(--mute);margin-left:6px;font-size:11.5px}
 #linkPop .it.on,#linkPop .it:hover,#linkList .it:hover{background:var(--accent-soft)}
@@ -515,6 +520,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
         </div>
         <div id="imgHandle" hidden title="ドラッグで大きさを変更"></div>
         <div id="linkPop" hidden></div>
+        <div id="slashPop" hidden></div>
         <div id="backlinks" hidden></div>
         <div id="cmtPop" hidden><div class="ct" id="cmtPopText"></div><div class="cm" id="cmtPopMeta"></div>
           <div class="row"><button type="button" id="cmtPopEdit">編集</button><button type="button" id="cmtPopDel" class="danger">削除</button><button type="button" id="cmtPopClose">閉じる</button></div></div>
@@ -1115,7 +1121,7 @@ function loadIntoEditor(n){
   renderNbSelect(n); updateSaveState(n);
   deselectImage(); applyImgSizes(editorEl); hydrate(editorEl);
   updateClaudeBtn(n);
-  histInit(n); hideCmtPop(); updateCmtBtn(); updateCount(); markBrokenLinks(); renderBacklinks(n.id); hideLinkPop();
+  histInit(n); hideCmtPop(); updateCmtBtn(); updateCount(); markBrokenLinks(); renderBacklinks(n.id); hideLinkPop(); hideSlash();
   if (!$('#findBar').hidden) runFind();
 }
 async function openNote(id, {push = true} = {}){
@@ -3513,6 +3519,136 @@ async function archiveNotes(ids, on){
 }
 addMoreItem({k: 'arch', label: '🗄 アーカイブへ移動', run: n => archiveNotes([n.id], true), show: n => !n.deleted && !n.archived});
 addMoreItem({k: 'unarch', label: '🗄 アーカイブから戻す', run: n => archiveNotes([n.id], false), show: n => !n.deleted && n.archived});
+
+/* ---------------- 入力ショートカット（## で見出し など） ---------------- */
+function caretBlock(){
+  const s = getSelection(); if (!s.rangeCount || !s.isCollapsed) return null;
+  const r = s.getRangeAt(0); if (!editorEl.contains(r.startContainer)) return null;
+  let b = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+  b = b.closest('p,div,h1,h2,h3,h4,li,blockquote,td,th') || editorEl;
+  if (!editorEl.contains(b) && b !== editorEl) return null;
+  const pre = document.createRange(); pre.selectNodeContents(b === editorEl ? editorEl : b); pre.setEnd(r.startContainer, r.startOffset);
+  return {block: b, range: pre, before: pre.toString()};
+}
+const MD_RULES = [
+  {re: /^(#{1,4}|＃{1,4})[ \u00a0\u3000]$/, label: '見出し', run: m => document.execCommand('formatBlock', false, `<h${[...m[1]].length}>`)},
+  {re: /^[-*＊][ \u00a0\u3000]$/, label: '箇条書き', list: true, run: () => document.execCommand('insertUnorderedList')},
+  {re: /^1[.．][ \u00a0\u3000]$/, label: '番号付きリスト', list: true, run: () => document.execCommand('insertOrderedList')},
+  {re: /^(\[ ?\]|［ ?］|\[x\])[ \u00a0\u3000]$/i, label: 'チェックリスト', list: true, run: () => toggleChecklist()},
+  {re: /^[>＞][ \u00a0\u3000]$/, label: '引用', run: () => document.execCommand('formatBlock', false, '<blockquote>')},
+];
+function wrapRootLine(){   // 本文の直下にある文字（最初の行など）を段落で包む
+  const s = getSelection(); if (!s.rangeCount) return;
+  const r = s.getRangeAt(0); let n = r.startContainer;
+  if (n.nodeType !== 3 || n.parentNode !== editorEl) return;
+  const p = document.createElement('p'); let a = n; while (a.previousSibling && a.previousSibling.nodeName !== 'BR' && !/^(P|DIV|H\d|UL|OL|TABLE|BLOCKQUOTE|PRE|HR)$/.test(a.previousSibling.nodeName)) a = a.previousSibling;
+  const off = r.startOffset; editorEl.insertBefore(p, a);
+  let x = a; while (x && x !== n.nextSibling) { const nx = x.nextSibling; p.appendChild(x); x = nx; }
+  const rr = document.createRange(); rr.setStart(n, off); rr.collapse(true); s.removeAllRanges(); s.addRange(rr);
+}
+function tryMarkdownShortcut(){
+  wrapRootLine();
+  const c = caretBlock(); if (!c || c.before.length > 6) return false;
+  if (c.block.closest('td,th,pre')) return false;
+  for (const rule of MD_RULES) {
+    const m = c.before.match(rule.re); if (!m) continue;
+    if (rule.list && c.block.closest('li')) return false;
+    if (/^H[1-4]$/.test(c.block.tagName) && rule.label === '見出し') return false;
+    histBefore();
+    c.range.deleteContents();
+    if (!c.block.textContent && c.block !== editorEl && !c.block.querySelector('br,img')) c.block.appendChild(document.createElement('br'));
+    const sel = getSelection(), r = document.createRange(); r.setStart(c.block === editorEl ? editorEl : c.block, 0); r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
+    rule.run(m);
+    onEdit(rule.label + '（入力ショートカット）');
+    return true;
+  }
+  return false;
+}
+editorEl.addEventListener('input', e => {
+  if (e.isComposing || S.histApplying) return;
+  if (e.inputType === 'insertText' && /[ \u3000]$/.test(e.data || '')) tryMarkdownShortcut();
+});
+editorEl.addEventListener('compositionend', e => { if (/[ \u3000]$/.test(e.data || '')) setTimeout(tryMarkdownShortcut, 0); });
+editorEl.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing || e.shiftKey || SP.open || LP.open) return;
+  const c = caretBlock(); if (!c || c.block === editorEl || c.block.closest('li,td,th,pre')) return;
+  const bq = c.block.closest('blockquote');
+  if (bq && !c.block.textContent.trim() && (c.block === bq || !c.block.nextElementSibling)) {   // 空行でEnter → 引用を抜ける
+    e.preventDefault(); histBefore();
+    const p = document.createElement('p'); p.innerHTML = '<br>';
+    if (c.block === bq) bq.replaceWith(p); else { c.block.remove(); bq.after(p); }
+    placeCaret(p); onEdit('引用を終える'); return;
+  }
+  if (!/^(-{3,}|ー{3,}|─{3,}|＿{3,}|_{3,})$/.test(c.block.textContent.trim())) return;
+  e.preventDefault(); histBefore();
+  const hr = document.createElement('hr'), p = document.createElement('p'); p.innerHTML = '<br>';
+  c.block.replaceWith(hr, p); placeCaret(p); onEdit('区切り線（入力ショートカット）');
+});
+
+/* ---------------- 「/」で挿入メニュー ---------------- */
+const SLASH = [
+  {k: 'h1', ic: 'H1', label: '見出し1（大見出し）', kw: 'midashi heading みだし おおみだし h1', run: () => document.execCommand('formatBlock', false, '<h1>')},
+  {k: 'h2', ic: 'H2', label: '見出し2（中見出し）', kw: 'midashi heading みだし なかみだし h2', run: () => document.execCommand('formatBlock', false, '<h2>')},
+  {k: 'h3', ic: 'H3', label: '見出し3（小見出し）', kw: 'midashi heading みだし こみだし h3', run: () => document.execCommand('formatBlock', false, '<h3>')},
+  {k: 'h4', ic: 'H4', label: '見出し4', kw: 'midashi heading みだし h4', run: () => document.execCommand('formatBlock', false, '<h4>')},
+  {k: 'p', ic: '¶', label: '本文', kw: 'text honbun ほんぶん p', run: () => document.execCommand('formatBlock', false, '<p>')},
+  {k: 'ul', ic: '•', label: '箇条書き', kw: 'list bullet kajougaki かじょうがき りすと', run: () => document.execCommand('insertUnorderedList')},
+  {k: 'ol', ic: '1.', label: '番号付きリスト', kw: 'number list bangou ばんごう りすと', run: () => document.execCommand('insertOrderedList')},
+  {k: 'check', ic: '☑', label: 'チェックリスト', kw: 'todo check task ちぇっく たすく', run: () => toggleChecklist()},
+  {k: 'table', ic: '▦', label: '表', kw: 'table hyou ひょう てーぶる', run: () => insertTable()},
+  {k: 'quote', ic: '❝', label: '引用', kw: 'quote inyou いんよう', run: () => document.execCommand('formatBlock', false, '<blockquote>')},
+  {k: 'hr', ic: '—', label: '区切り線', kw: 'line hr divider kugiri くぎり せん', run: () => document.execCommand('insertHTML', false, '<hr><p><br></p>')},
+  {k: 'file', ic: '📎', label: '画像・ファイルを添付', kw: 'image file gazou tenpu がぞう てんぷ ふぁいる しゃしん', run: () => $('#fileInput').click()},
+  {k: 'link', ic: '🔗', label: 'ノートへのリンク', kw: 'link note rinku りんく のーと', run: () => openLinkDlg()},
+  {k: 'date', ic: '📅', label: '今日の日付', kw: 'date today hiduke ひづけ きょう', run: () => document.execCommand('insertText', false, fillPlaceholders('{{日付}}'))},
+  {k: 'time', ic: '🕘', label: '現在の時刻', kw: 'time now jikoku じこく いま', run: () => document.execCommand('insertText', false, fillPlaceholders('{{時刻}}'))},
+];
+const SP = {open: false, items: [], idx: 0, range: null};
+function hideSlash(){ SP.open = false; $('#slashPop').hidden = true; }
+function checkSlash(){
+  const s = getSelection(); if (!s.rangeCount || !s.isCollapsed) return hideSlash();
+  const r = s.getRangeAt(0), node = r.startContainer;
+  if (node.nodeType !== 3 || !editorEl.contains(node)) return hideSlash();
+  const before = node.data.slice(0, r.startOffset), m = before.match(/(^|[\s　])([\/／])([^\s　\/／]{0,12})$/);
+  if (!m) return hideSlash();
+  const q = norm(m[3]);
+  const items = SLASH.filter(x => !q || norm(x.label).includes(q) || norm(x.kw).includes(q));
+  if (!items.length) return hideSlash();
+  const del = document.createRange(); del.setStart(node, r.startOffset - m[2].length - m[3].length); del.setEnd(node, r.startOffset);
+  SP.range = del; SP.items = items; SP.idx = Math.min(SP.idx, items.length - 1); if (!SP.open) SP.idx = 0; SP.open = true;
+  const pop = $('#slashPop'), body = $('#editorWrap .ed-body');
+  pop.innerHTML = `<div class="hd">挿入する（↑↓で選んで Enter）</div>` + items.map((x, i) => `<div class="it ${i === SP.idx ? 'on' : ''}" data-i="${i}"><span class="ic">${x.ic}</span>${esc(x.label)}</div>`).join('');
+  pop.hidden = false;
+  const rect = r.getClientRects()[0] || node.parentElement.getBoundingClientRect(), br = body.getBoundingClientRect();
+  pop.style.left = Math.max(6, Math.min(rect.left - br.left + body.scrollLeft, body.clientWidth - pop.offsetWidth - 6)) + 'px';
+  let top = rect.bottom - br.top + body.scrollTop + 4;
+  if (rect.bottom + pop.offsetHeight > window.innerHeight - 10) top = rect.top - br.top + body.scrollTop - pop.offsetHeight - 4;
+  pop.style.top = Math.max(body.scrollTop + 4, top) + 'px';
+}
+function runSlash(i){
+  const it = SP.items[i]; if (!it) return;
+  histBefore();
+  const del = SP.range; hideSlash();
+  editorEl.focus(); const s = getSelection(); s.removeAllRanges(); s.addRange(del); del.deleteContents();
+  const c = caretBlock();
+  if (c && c.block !== editorEl && !c.block.textContent && !c.block.querySelector('br,img')) { c.block.appendChild(document.createElement('br')); placeCaret(c.block); }
+  it.run();
+  if (!['table', 'file', 'link'].includes(it.k)) onEdit(it.label + 'を挿入');
+}
+editorEl.addEventListener('input', () => checkSlash());
+editorEl.addEventListener('compositionend', () => setTimeout(checkSlash, 0));
+editorEl.addEventListener('keydown', e => {
+  if (!SP.open || e.isComposing) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); SP.idx = (SP.idx + (e.key === 'ArrowDown' ? 1 : -1) + SP.items.length) % SP.items.length;
+    $('#slashPop').querySelectorAll('.it').forEach((x, i) => x.classList.toggle('on', i === SP.idx));
+    $('#slashPop').querySelector('.it.on')?.scrollIntoView({block: 'nearest'});
+  } else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); runSlash(SP.idx); }
+  else if (e.key === 'Escape') { e.preventDefault(); hideSlash(); }
+}, true);
+$('#slashPop').addEventListener('mousedown', e => e.preventDefault());
+$('#slashPop').addEventListener('click', e => { const it = e.target.closest('.it'); if (it) runSlash(Number(it.dataset.i)); });
+document.addEventListener('pointerdown', e => { if (SP.open && !e.target.closest('#slashPop')) hideSlash(); }, true);
 
 /* ---------------- boot ---------------- */
 (async () => {
