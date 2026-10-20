@@ -322,6 +322,28 @@ body.dragging-note,body.dragging-note *{cursor:grabbing!important;user-select:no
   body.printing #editor table{width:calc(100% - 2px)}
   body.printing #editor .cmt{background:none;border-bottom:1px dotted #999}
 }
+#boardView{position:fixed;inset:0;z-index:44;background:var(--bg);display:flex;flex-direction:column}
+#boardView[hidden]{display:none}
+#boardView .bbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top));border-bottom:1px solid var(--line);background:var(--panel)}
+#boardView .bbar b{flex:1;min-width:120px;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#boardView .bbar button{height:32px;padding:0 10px;border-radius:8px;font-size:13px;border:1px solid var(--line);color:var(--fg);white-space:nowrap}
+#boardView .bbar button.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+#boardView .bhint{font-size:12px;color:var(--mute);padding:6px 14px 0}
+#boardGrid{flex:1;overflow:auto;padding:12px 14px 40px;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;align-content:start}
+.bcard{position:relative;background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:10px;padding:10px 10px 8px 12px;min-height:118px;display:flex;flex-direction:column;gap:5px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:pan-y;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.bcard.l1{border-left-color:#1f4f40;background:var(--accent-soft)}.bcard.l2{border-left-color:var(--accent)}.bcard.l3{border-left-color:#7fbca5}.bcard.l4{border-left-color:#b7d8cb}
+.bcard.pre{border-left-color:var(--line);cursor:default;opacity:.85}
+.bcard.dragging{opacity:.35}
+.bcard .bn{font-size:11px;color:var(--mute);display:flex;gap:6px;align-items:center}
+.bcard .bt{font-weight:700;font-size:14.5px;line-height:1.4;word-break:break-word}
+.bcard .bs{font-size:12.5px;color:var(--mute);line-height:1.5;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;flex:1}
+.bcard .bf{display:flex;gap:2px;justify-content:flex-end}
+.bcard .bf button{width:30px;height:28px;border-radius:7px;font-size:13px;color:var(--mute)}
+.bcard .bf button:hover{background:var(--sel);color:var(--fg)}
+.bcard .bf button:disabled{opacity:.25}
+.board-empty{grid-column:1/-1;color:var(--mute);text-align:center;padding:40px 10px;line-height:1.8}
+#boardGhost{position:fixed;z-index:60;pointer-events:none;background:var(--accent);color:var(--accent-fg);padding:6px 12px;border-radius:999px;font-size:13px;box-shadow:0 8px 20px rgba(0,0,0,.25);transform:translate(12px,12px);max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#boardGhost[hidden]{display:none}
 #vertView{position:fixed;inset:0;z-index:45;background:#fbfaf6;color:#222;display:flex;flex-direction:column}
 #vertView[hidden]{display:none}
 @media (prefers-color-scheme: dark){#vertView{background:#16181a;color:#e7e3d8}}
@@ -540,6 +562,12 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
 <div id="scrim"></div>
 <div id="toast"></div>
 <div id="dragGhost" hidden></div>
+<div id="boardView" hidden>
+  <div class="bbar"><b id="boardTitle"></b><span style="font-size:12px;color:var(--mute)">カードの単位：</span><button type="button" data-lv="1">見出し1</button><button type="button" data-lv="2">見出し2</button><button type="button" data-lv="3">見出し3</button><button type="button" id="boardAdd">＋ カード</button><button type="button" id="boardClose">閉じる</button></div>
+  <div class="bhint">カードをドラッグ（スマホ・タブレットは長押ししてからドラッグ、または ↑↓）で並べ替えると、本文の順番も入れ替わります。カードを押すとその場所へ移動。タイトルをダブルクリックで名前を変更。</div>
+  <div id="boardGrid"></div>
+</div>
+<div id="boardGhost" hidden></div>
 <div id="vertView" hidden>
   <div class="vbar"><b id="vertTitle"></b><button type="button" id="vertFont">ゴシック</button><button type="button" data-fs="-1">A−</button><button type="button" data-fs="1">A＋</button><button type="button" id="vertClose">閉じる</button></div>
   <div id="vertBody"></div>
@@ -3706,6 +3734,152 @@ if (BC) BC.onmessage = async ({data: m}) => {
     if (S.currentId) renderNbSelect(S.notes.get(S.currentId));
   } else if (m.t === 'sync' && !SOLO) scheduleSync(1500);
 };
+
+/* ---------------- 構成ボード ---------------- */
+const BLOCK_RE = /^(H[1-6]|UL|OL|TABLE|BLOCKQUOTE|PRE|HR|DIV|P|FIGURE)$/;
+// ブラウザが作る入れ子のdivをほどき、本文の直下を「段落・見出し・表…」の並びにそろえる
+function flattenEditor(){
+  let changed = false;
+  const groupInline = parent => {
+    const out = []; let run = null;
+    for (const node of [...parent.childNodes]) {
+      if (node.nodeType === 1 && BLOCK_RE.test(node.tagName)) { run = null; out.push(node); continue; }
+      if (node.nodeType === 3 && !node.data.trim() && !run) continue;
+      if (node.nodeType === 1 && node.tagName === 'BR' && !run) { const p = document.createElement('p'); p.appendChild(node); out.push(p); continue; }
+      if (!run) { run = document.createElement('p'); out.push(run); }
+      run.appendChild(node);
+    }
+    return out;
+  };
+  for (let guard = 0; guard < 50; guard++) {
+    const div = [...editorEl.children].find(el => el.tagName === 'DIV' && [...el.children].some(c => BLOCK_RE.test(c.tagName)));
+    if (!div) break;
+    div.replaceWith(...groupInline(div)); changed = true;
+  }
+  if ([...editorEl.childNodes].some(n => n.nodeType === 3 ? n.data.trim() : n.nodeType === 1 && !BLOCK_RE.test(n.tagName))) {
+    const nodes = groupInline(editorEl); editorEl.replaceChildren(...nodes); changed = true;
+  }
+  return changed;
+}
+const BOARD = {lv: 2, cards: [], pre: null};
+function boardSections(L){
+  const secs = []; let cur = {head: null, lv: 0, nodes: []};
+  for (const b of [...editorEl.children]) {
+    const m = b.tagName.match(/^H([1-4])$/);
+    if (m && Number(m[1]) <= L) { secs.push(cur); cur = {head: b, lv: Number(m[1]), nodes: [b]}; } else cur.nodes.push(b);
+  }
+  secs.push(cur);
+  return {pre: secs[0], cards: secs.slice(1)};
+}
+function defaultBoardLevel(){
+  const hs = [...editorEl.querySelectorAll(':scope > h1, :scope > h2, :scope > h3, :scope > h4')].map(x => Number(x.tagName[1]));
+  for (let L = 1; L <= 4; L++) if (hs.filter(v => v <= L).length >= 2) return L;
+  return hs.length ? Math.min(...hs) : 2;
+}
+function secText(nodes){ return nodes.map(n => n.textContent).join(' ').replace(/\s+/g, ' ').trim(); }
+function renderBoard(){
+  const {pre, cards} = boardSections(BOARD.lv); BOARD.cards = cards; BOARD.pre = pre;
+  $('#boardView').querySelectorAll('[data-lv]').forEach(b => b.classList.toggle('on', Number(b.dataset.lv) === BOARD.lv));
+  const g = $('#boardGrid');
+  if (!cards.length) { g.innerHTML = `<div class="board-empty">見出し${BOARD.lv}以上の見出しがありません。<br>本文に見出しを付けると、見出しごとにカードになります（「＋ カード」でも追加できます）。</div>`; return; }
+  const preTxt = secText(pre.nodes);
+  let html = preTxt ? `<div class="bcard pre"><div class="bn">冒頭（固定）</div><div class="bs">${esc(preTxt.slice(0, 140))}</div></div>` : '';
+  html += cards.map((c, i) => {
+    const body = secText(c.nodes.slice(1)), subs = c.nodes.slice(1).filter(n => /^H[1-4]$/.test(n.tagName)).length;
+    return `<div class="bcard l${c.lv}" data-i="${i}"><div class="bn"><span>${i + 1}</span><span>見出し${c.lv}</span><span>${countChars(body).toLocaleString()}字</span>${subs ? `<span>小見出し${subs}</span>` : ''}</div>
+      <div class="bt">${esc(c.head.textContent.trim() || '（無題）')}</div><div class="bs">${esc(body.slice(0, 160))}</div>
+      <div class="bf"><button type="button" data-mv="-1" ${i === 0 ? 'disabled' : ''} aria-label="前へ">↑</button><button type="button" data-mv="1" ${i === cards.length - 1 ? 'disabled' : ''} aria-label="後ろへ">↓</button></div></div>`;
+  }).join('');
+  g.innerHTML = html;
+}
+function openBoard(){
+  if (!editorEl.isContentEditable) { toast('ゴミ箱のノートは編集できません'); return; }
+  histBefore();
+  if (flattenEditor()) onEdit('本文の構造を整える');
+  BOARD.lv = defaultBoardLevel();
+  $('#boardTitle').textContent = '構成ボード：' + (titleEl.value || '無題のノート');
+  renderBoard(); $('#boardView').hidden = false;
+}
+function closeBoard(){ $('#boardView').hidden = true; }
+function applyBoardOrder(order){
+  if (order.every((v, i) => v === i)) return;
+  histBefore();
+  const {pre, cards} = boardSections(BOARD.lv);
+  const seq = [...pre.nodes, ...order.flatMap(i => cards[i].nodes)];
+  for (const n of seq) editorEl.appendChild(n);
+  onEdit('構成ボードで並べ替え'); renderBoard();
+}
+$('#boardView').addEventListener('click', e => {
+  const lv = e.target.closest('[data-lv]'); if (lv) { BOARD.lv = Number(lv.dataset.lv); renderBoard(); return; }
+  const mv = e.target.closest('[data-mv]');
+  if (mv) { const i = Number(mv.closest('.bcard').dataset.i), j = i + Number(mv.dataset.mv); const order = BOARD.cards.map((_, k) => k); [order[i], order[j]] = [order[j], order[i]]; applyBoardOrder(order); return; }
+  if (BDRAG.justDragged) return;
+  const card = e.target.closest('.bcard[data-i]');
+  if (card) {
+    const c = BOARD.cards[Number(card.dataset.i)]; closeBoard();
+    c.head.scrollIntoView({block: 'start', behavior: 'smooth'}); c.head.classList.add('flash-h'); setTimeout(() => c.head.classList.remove('flash-h'), 1500);
+    placeCaret(c.head, true);
+  }
+});
+$('#boardGrid').addEventListener('dblclick', e => {
+  const t = e.target.closest('.bcard[data-i] .bt'); if (!t) return;
+  const c = BOARD.cards[Number(t.closest('.bcard').dataset.i)];
+  const name = prompt('見出しの名前', c.head.textContent.trim()); if (name == null || !name.trim()) return;
+  histBefore(); c.head.textContent = name.trim(); onEdit('見出しの名前を変更'); renderBoard();
+});
+$('#boardAdd').addEventListener('click', () => {
+  const name = prompt(`新しいカード（見出し${BOARD.lv}）の名前`); if (!name || !name.trim()) return;
+  histBefore();
+  const hd = document.createElement('h' + BOARD.lv); hd.textContent = name.trim();
+  const p = document.createElement('p'); p.innerHTML = '<br>';
+  editorEl.append(hd, p); onEdit('カードを追加'); renderBoard();
+  $('#boardGrid').lastElementChild?.scrollIntoView({block: 'nearest'});
+});
+$('#boardClose').addEventListener('click', closeBoard);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#boardView').hidden && !BDRAG.active) closeBoard(); });
+// ドラッグで並べ替え
+const BDRAG = {cand: null, active: false, el: null, justDragged: false};
+$('#boardGrid').addEventListener('pointerdown', e => {
+  const card = e.target.closest('.bcard[data-i]'); if (!card || e.target.closest('button') || e.button > 0) return;
+  BDRAG.cand = {x: e.clientX, y: e.clientY, pid: e.pointerId, touch: e.pointerType !== 'mouse', card};
+  if (BDRAG.cand.touch) BDRAG.cand.timer = setTimeout(() => { if (BDRAG.cand) startBDrag(BDRAG.cand.x, BDRAG.cand.y); }, 350);
+});
+function startBDrag(x, y){
+  const c = BDRAG.cand; BDRAG.active = true; BDRAG.el = c.card; c.card.classList.add('dragging');
+  try { c.card.setPointerCapture(c.pid); } catch {}
+  const g = $('#boardGhost'); g.textContent = '📇 ' + c.card.querySelector('.bt').textContent; g.hidden = false; g.style.left = x + 'px'; g.style.top = y + 'px';
+  if (navigator.vibrate) try { navigator.vibrate(12); } catch {}
+}
+document.addEventListener('pointermove', e => {
+  const c = BDRAG.cand; if (!c || e.pointerId !== c.pid) return;
+  if (!BDRAG.active) {
+    const d = Math.hypot(e.clientX - c.x, e.clientY - c.y);
+    if (c.touch) { if (d > 8) { clearTimeout(c.timer); BDRAG.cand = null; } return; }
+    if (d < 6) return; startBDrag(e.clientX, e.clientY);
+  }
+  e.preventDefault();
+  const g = $('#boardGhost'); g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px';
+  const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('.bcard[data-i]');
+  if (over && over !== BDRAG.el) {
+    const r = over.getBoundingClientRect(), before = (e.clientY < r.top + r.height / 2) || (Math.abs(e.clientY - (r.top + r.height / 2)) < r.height / 3 && e.clientX < r.left + r.width / 2);
+    before ? over.before(BDRAG.el) : over.after(BDRAG.el);
+  }
+  const grid = $('#boardGrid'), gr = grid.getBoundingClientRect();
+  if (e.clientY < gr.top + 40) grid.scrollTop -= 14; else if (e.clientY > gr.bottom - 40) grid.scrollTop += 14;
+}, {passive: false});
+function endBDrag(cancel){
+  const c = BDRAG.cand; if (!c) return; clearTimeout(c.timer); BDRAG.cand = null;
+  if (!BDRAG.active) return;
+  BDRAG.active = false; BDRAG.el.classList.remove('dragging'); $('#boardGhost').hidden = true;
+  BDRAG.justDragged = true; setTimeout(() => { BDRAG.justDragged = false; }, 300);
+  const order = [...$('#boardGrid').querySelectorAll('.bcard[data-i]')].map(x => Number(x.dataset.i));
+  if (cancel) renderBoard(); else applyBoardOrder(order);
+}
+document.addEventListener('pointerup', e => { if (BDRAG.cand && e.pointerId === BDRAG.cand.pid) endBDrag(false); });
+document.addEventListener('pointercancel', e => { if (BDRAG.cand && e.pointerId === BDRAG.cand.pid) endBDrag(!BDRAG.active); });
+document.addEventListener('touchmove', e => { if (BDRAG.active) e.preventDefault(); }, {passive: false});
+document.addEventListener('contextmenu', e => { if (BDRAG.cand?.touch || BDRAG.active) e.preventDefault(); });
+addMoreItem({k: 'board', label: '📇 構成ボード（見出しをカードで並べ替え）', run: openBoard, show: n => !n.deleted});
 
 /* ---------------- boot ---------------- */
 (async () => {
