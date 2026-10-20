@@ -613,9 +613,12 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
     <p class="hint"><b>ブックマークレット</b>：ブラウザのブックマークのURL欄にこれを貼り付けて保存。記事を開いてそのブックマークを選ぶとクリップされます（文章を選択してから使うと選択部分だけ）。</p>
     <textarea id="bmCode" readonly></textarea>
     <div class="row"><button type="button" data-copy="bmCode">コピー</button></div>
-    <p class="hint"><b>iPhoneショートカット用</b>：「Webページで JavaScript を実行」アクションに貼り付けます（手順はREADME）。</p>
+    <p class="hint"><b>iPhoneショートカット用</b>：ショートカットは「Webページで JavaScript を実行」→「クリップボードにコピー」→「URLを開く」の3つのアクションで作ります（手順はREADME）。<br>① JavaScriptのアクションに貼り付けるコード</p>
     <textarea id="scCode" readonly></textarea>
     <div class="row"><button type="button" data-copy="scCode">コピー</button></div>
+    <p class="hint">② 「URLを開く」アクションに入れるURL</p>
+    <input id="scUrl" readonly>
+    <div class="row"><button type="button" data-copy="scUrl">コピー</button></div>
     <h4>ノートの取り込み</h4>
     <p class="hint">NoteBox用の取り込みファイル（.zip）を選ぶと、中のノートと添付ファイルをまとめて追加します。修正用ファイル（.json）を選ぶと、取り込み済みのノートに反映します。添付が多い場合はPCでの取り込みがおすすめです。同じファイルを2回取り込んでも重複はしません。</p>
     <div class="row"><button type="button" id="importBtn">取り込みファイルを選ぶ</button><button type="button" id="pasteImportBtn">テキストを貼り付けて取り込む</button></div>
@@ -1965,7 +1968,7 @@ function renderAll(){ renderNav(); renderList(); updateChip(); }
 /* ---------------- settings ---------------- */
 function renderSettings(){
   $('#cidInput').value = clientId();
-  $('#bmCode').value = bookmarklet(); $('#scCode').value = shortcutCode();
+  $('#bmCode').value = bookmarklet(); $('#scCode').value = shortcutCode(); $('#scUrl').value = shortcutUrl();
   const info = [];
   info.push(hasToken() ? 'Googleに接続中' : '未接続');
   if (S.lastSyncAt) info.push('最終同期: ' + new Date(S.lastSyncAt).toLocaleString('ja-JP'));
@@ -1974,7 +1977,7 @@ function renderSettings(){
   const cs = [...S.notes.values()].filter(n => n.claude && !n.deleted).length; if (cs) info.push(`Claude共有 ${cs} 件（ドライブの NoteBox/Claude共有）`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.21-1';
+const APP_VERSION = '2026.10.21-2';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2071,7 +2074,9 @@ var u=APP+'#clip='+encodeURIComponent(JSON.stringify(d));__OUT__})();`;
 const appUrl = () => location.origin + location.pathname.replace(/index\.html$/, '');
 const bookmarklet = () => 'javascript:' + encodeURIComponent(CLIP_SRC.replace('__APP__', appUrl())
   .replace('__OUT__', "var w=window.open(u,'_blank');if(!w)location.href=u;").replace(/\n/g, ''));
-const shortcutCode = () => CLIP_SRC.replace('__APP__', appUrl()).replace('__OUT__', 'completion(u);');
+// iPhoneショートカット：URLに本文を載せると長すぎて「URLを開く」が受け付けないため、内容はクリップボード経由で渡す
+const shortcutCode = () => CLIP_SRC.replace('__APP__', appUrl()).replace("var u=APP+'#clip='+encodeURIComponent(JSON.stringify(d));__OUT__", 'completion(JSON.stringify(d));');
+const shortcutUrl = () => appUrl() + '#clip=paste';
 
 const CLIP_NB = 'webclip';
 async function ensureClipNotebook(){
@@ -2082,6 +2087,7 @@ async function ensureClipNotebook(){
 }
 function readIncomingClip(){
   const h = location.hash;
+  if (h === '#clip=paste') return {paste: true};
   if (h.startsWith('#clip=')) {
     try { return JSON.parse(decodeURIComponent(h.slice(6))); }
     catch (e) { toast('クリップを読み込めませんでした（ページが大きすぎる可能性）'); return null; }
@@ -2116,13 +2122,29 @@ async function saveClip(c){
 async function handleIncomingClip(){
   const c = readIncomingClip(); if (!c) return false;
   history.replaceState(null, '', location.pathname);
+  if (c.paste) { if ($('#settings').open) $('#settings').close(); showBanner('ショートカットから届いたクリップを保存します', 'クリップを保存', pasteClip, {sticky: true}); return 'paste'; }
   await saveClip(c); return true;
 }
-function showBanner(text, actLabel, act){
+// クリップボードの内容（ショートカットが書き込んだJSON、またはURL・文章）をクリップとして保存
+async function pasteClip(){
+  let t = '';
+  try { t = await navigator.clipboard.readText(); }
+  catch (e) { toast('クリップボードを読めませんでした。表示された「ペースト」を押してください'); return; }
+  t = (t || '').trim();
+  let c = null;
+  try { const d = JSON.parse(t); if (d && (d.html || d.url)) c = d; } catch {}
+  if (!c) {
+    const url = (t.match(/https?:\/\/\S+/) || [''])[0];
+    if (!t) { toast('クリップボードが空です。もう一度Safariの共有ボタンからクリップしてください'); return; }
+    c = {title: '', url, text: t.replace(url, '').trim()};
+  }
+  await saveClip(c);
+}
+function showBanner(text, actLabel, act, {sticky = false} = {}){
   $('#bannerText').textContent = text; $('#bannerAct').textContent = actLabel;
   $('#bannerAct').onclick = () => { hideBanner(); act(); };
   $('#banner').hidden = false;
-  clearTimeout(showBanner.t); showBanner.t = setTimeout(hideBanner, 12000);
+  clearTimeout(showBanner.t); if (!sticky) showBanner.t = setTimeout(hideBanner, 12000);
 }
 function hideBanner(){ $('#banner').hidden = true; }
 $('#bannerClose').addEventListener('click', hideBanner);
@@ -4093,7 +4115,7 @@ addMoreItem({k: 'm-purge', label: '🗑 完全に削除', danger: true, run: () 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.storage?.persist?.().catch(() => {});
   if (navigator.onLine && clientId()) loadGis().catch(() => {});
-  if (!clientId()) setTimeout(openSettings, 400); else sync();
+  if (!clientId()) { if (clipped !== 'paste') setTimeout(openSettings, 400); } else sync();
   setTimeout(checkForUpdate, 1500);
 })();
 </script>
