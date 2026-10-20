@@ -238,6 +238,9 @@ body.dragging-note,body.dragging-note *{cursor:grabbing!important;user-select:no
 #editor blockquote{margin:8px 0;padding:4px 14px;border-left:3px solid var(--accent);color:var(--mute)}
 #editor img{max-width:100%;height:auto;border-radius:8px;display:block;margin:8px 0;background:var(--sel)}
 #editor img.missing{min-height:80px;min-width:160px;border:1px dashed var(--line)}
+img.lazy{height:auto}
+img.lazy:not([data-w]){width:min(100%,var(--pw,480px))}
+#vertBody img.lazy{width:auto !important;height:40vh}
 #editor ul,#editor ol{padding-left:24px}
 #editor ul.check{list-style:none;padding-left:0}
 #editor ul.check>li{position:relative;padding-left:28px}
@@ -874,6 +877,7 @@ function signOut(){
   if (S.token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(S.token, () => {});
   S.token = null; S.tokenExp = 0;
   localStorage.removeItem('nb.token'); localStorage.removeItem('nb.signedIn'); localStorage.removeItem('nb.email');
+  db.del('kv', 'chg').catch(() => {});   // 次回は全体を確認する
   updateChip(); renderSettings();
 }
 
@@ -966,12 +970,24 @@ async function sync(opts = {}){
   S.syncing = true; S.error = ''; updateChip();
   try {
     await flushSave();
-    const f = await ensureFolders();
+    // 前回からの変更分だけを取得する（ドライブの changes API）。取れないときや一定時間ごとに全体を確認
+    const chg = await db.get('kv', 'chg');
+    let f = await db.get('kv', 'folders'), inc = null, token;
+    if (!opts.full && chg?.token && f && now() - (chg.full || 0) < FULL_SYNC_MS) {
+      try { const r = await fetchChanges(chg.token, f); if (r) { inc = r; token = r.token; } }
+      catch (e) { if (e.auth) throw e; console.warn('changes', e); }
+    }
+    if (!inc) {
+      try { token = (await gjson(`${API}/changes/startPageToken`)).startPageToken; }   // 一覧を取る前に控える（取得中の変更を取りこぼさない）
+      catch (e) { if (e.auth) throw e; token = null; }
+      f = await ensureFolders();
+    }
     await uploadPendingAttachments(f);
     await processPendingTrash();
-    await syncNotebooks(f);
-    await syncNotes(f);
-    await syncClaudeDocs(f);
+    if (!inc || inc.meta || nbKey(S.notebooks) !== ((await db.get('kv', 'nbSynced')) || '')) await syncNotebooks(f);
+    await syncNotes(f, inc);
+    await syncClaudeDocs(f, inc && inc.changed);
+    if (token) await db.put('kv', {token, full: inc ? chg.full : now()}, 'chg'); else await db.del('kv', 'chg');
     S.lastSyncAt = now(); await db.put('kv', S.lastSyncAt, 'lastSync');
   } catch (e) {
     console.error(e);
@@ -983,6 +999,30 @@ async function sync(opts = {}){
     S.progress = '';
     if (S.syncAgain) { S.syncAgain = false; scheduleSync(1000); }
   }
+}
+const FULL_SYNC_MS = 12 * 3600e3;
+// 変更分の取得。全体の確認が必要なときは null を返す
+async function fetchChanges(token, f){
+  const out = {notes: [], gone: new Set(), changed: new Set(), meta: false, token: null};
+  let pt = token;
+  while (pt) {
+    let r;
+    try { r = await gjson(`${API}/changes?pageToken=${encodeURIComponent(pt)}&pageSize=1000&spaces=drive&includeRemoved=true&fields=nextPageToken,newStartPageToken,changes(fileId,removed,file(id,trashed,parents,appProperties))`); }
+    catch (e) { if ([400, 404, 410].includes(e.status)) return null; throw e; }
+    for (const c of r.changes || []) {
+      const id = c.fileId, fl = c.file, gone = c.removed || !fl || fl.trashed;
+      if (id === f.root || id === f.att || id === f.claude) { if (gone) return null; continue; }
+      out.changed.add(id);
+      if (gone) { out.gone.add(id); continue; }
+      if (!(fl.parents || []).includes(f.root)) continue;
+      const k = fl.appProperties?.kind;
+      if (k === 'note') out.notes.push(fl);
+      else if (k === 'meta') out.meta = true;
+    }
+    if (r.newStartPageToken) { out.token = r.newStartPageToken; break; }
+    pt = r.nextPageToken;
+  }
+  return out.token ? out : null;
 }
 function mergeNotebooks(a, b){
   const m = new Map();
@@ -999,6 +1039,7 @@ async function syncNotebooks(f){
   if (!fileId || nbKey(merged) !== nbKey(remote)) {
     await uploadFile({fileId, name: 'notebooks.json', mime: 'application/json', data: JSON.stringify({notebooks: merged}), parent: f.root, appProperties: {kind: 'meta'}});
   }
+  await db.put('kv', nbKey(merged), 'nbSynced');
 }
 async function makeConflictCopy(local, remoteData){
   if (local.title === (remoteData.title || '') && local.body === sanitize(remoteData.body || '')) return;
@@ -1006,30 +1047,42 @@ async function makeConflictCopy(local, remoteData){
   await storeNote(copy);
   toast('別の端末と編集が重なったため「競合コピー」を作成しました');
 }
-async function syncNotes(f){
-  const remote = await listFolder(f.root, 'note');
-  const seen = new Set();
-  for (const r of remote){
-    const p = r.appProperties || {}; const id = p.noteId;
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const ru = Number(p.updated) || 0;
-    let l = S.notes.get(id);
-    if (l && l.syncedAt === ru) { if (l.fileId !== r.id) { l.fileId = r.id; await storeNote(l); } continue; }
-    // remote changed (or new to this device)
-    const data = await (await download(r.id)).json();
-    l = S.notes.get(id);
-    if (l && l.dirty) await makeConflictCopy(l, data);
-    await storeNote({...normalizeNote(data), fileId: r.id, syncedAt: ru, dirty: false});
+async function applyRemoteNote(r){
+  const p = r.appProperties || {}; const id = p.noteId;
+  if (!id) return;
+  const ru = Number(p.updated) || 0;
+  let l = S.notes.get(id);
+  if (l && l.syncedAt === ru) { if (l.fileId !== r.id) { l.fileId = r.id; await storeNote(l); } return; }
+  // remote changed (or new to this device)
+  const data = await (await download(r.id)).json();
+  l = S.notes.get(id);
+  if (l && l.dirty) await makeConflictCopy(l, data);
+  await storeNote({...normalizeNote(data), fileId: r.id, syncedAt: ru, dirty: false});
+}
+async function dropGoneNote(l){   // 別の端末で削除された
+  if (l.dirty) { l.fileId = null; l.syncedAt = null; await storeNote(l); }
+  else { S.notes.delete(l.id); await db.del('notes', l.id); }
+}
+async function syncNotes(f, inc){
+  if (inc) {   // 変更分だけ
+    for (const r of inc.notes) await applyRemoteNote(r);
+    if (inc.gone.size) for (const l of [...S.notes.values()]) if (l.fileId && inc.gone.has(l.fileId)) await dropGoneNote(l);
+  } else {
+    const remote = await listFolder(f.root, 'note');
+    const seen = new Set();
+    for (const r of remote){
+      const id = r.appProperties?.noteId;
+      if (!id || seen.has(id)) continue;
+      seen.add(id); await applyRemoteNote(r);
+    }
+    for (const l of [...S.notes.values()]){
+      if (!l.fileId || seen.has(l.id)) continue;
+      if (await isGone(l.fileId)) await dropGoneNote(l);
+    }
   }
-  // files deleted on another device
-  for (const l of [...S.notes.values()]){
-    if (!l.fileId || seen.has(l.id)) continue;
-    if (!(await isGone(l.fileId))) continue;
-    if (l.dirty) { l.fileId = null; l.syncedAt = null; await storeNote(l); }
-    else { S.notes.delete(l.id); await db.del('notes', l.id); }
-  }
-  // upload local changes
+  await uploadDirtyNotes(f);
+}
+async function uploadDirtyNotes(f){
   const pendingAtt = new Set(((await db.get('kv', 'pendingAtt')) || []).map(a => a.id));
   for (const l of [...S.notes.values()]){
     if (!l.dirty) continue;
@@ -1052,7 +1105,12 @@ async function uploadPendingAttachments(f){
     if (blob) {
       const fid = await uploadFile({name: a.name, mime: a.mime || 'application/octet-stream', data: blob, parent: f.att, appProperties: {kind: 'att'}});
       await db.put('blobs', blob, fid); await db.del('blobs', a.id);
-      if (urlCache.has(a.id)) urlCache.set(fid, urlCache.get(a.id));
+      for (const sf of ['@d', '@t']) {   // 縮小版も新しいIDに移す
+        const v = await db.get('blobs', a.id + sf);
+        if (v) { await db.put('blobs', v, fid + sf); await db.del('blobs', a.id + sf); if (sf === '@d' && v !== blob) await db.del('blobs', fid); }
+        if (urlCache.has(a.id + sf)) urlCache.set(fid + sf, urlCache.get(a.id + sf));
+      }
+      if (DIMS?.has(a.id)) rememberDims(fid, ...DIMS.get(a.id));
       const open = S.currentId;
       if (open) $('#editor').querySelectorAll(`[data-att="${a.id}"]`).forEach(e => e.dataset.att = fid);
       for (const n of S.notes.values()){
@@ -1078,18 +1136,110 @@ async function processPendingTrash(){
 
 /* ---------------- attachments ---------------- */
 const urlCache = new Map();
-async function getAttBlob(id){
+async function getAttBlob(id, {keep = true} = {}){   // 元のファイル
   const b = await db.get('blobs', id); if (b) return b;
-  if (id.startsWith('local-') || !hasToken() || !navigator.onLine) return null;
+  if (id.startsWith('local-') || !hasToken() || !navigator.onLine) return (await db.get('blobs', id + '@d')) || null;   // オフラインなら表示用の縮小版で代用
   const nb = await (await download(id)).blob();
-  await db.put('blobs', nb, id); return nb;
+  if (keep && !(await db.get('blobs', id + '@d'))) await db.put('blobs', nb, id);   // 画像（縮小版あり）は保存し直さない
+  return nb;
 }
+/* 表示用の縮小版：@d＝ノート表示用（長辺1600px）、@t＝カードの縮小画像（長辺400px）。
+   元のファイルはドライブにあるので、縮小版を作ったら端末からは消す（書き出し時などに必要なら取り直す） */
+const VIEW_MAX = {d: 1600, t: 400}, VIEW_MIN_BYTES = {d: 400e3, t: 120e3};
+const viewJobs = new Map();
+async function sniffImage(blob){
+  if (/^image\//.test(blob.type || '')) return blob.type;
+  const h = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+  if (h[0] === 0xFF && h[1] === 0xD8) return 'image/jpeg';
+  if (h[0] === 0x89 && h[1] === 0x50) return 'image/png';
+  if (h[0] === 0x47 && h[1] === 0x49) return 'image/gif';
+  if (h[8] === 0x57 && h[9] === 0x45 && h[10] === 0x42 && h[11] === 0x50) return 'image/webp';
+  return '';
+}
+async function shrinkImage(blob, max){
+  const type = await sniffImage(blob);
+  if (!/^image\/(jpeg|png|webp|bmp|avif|heic|heif)$/.test(type)) return null;   // GIF（動き）・SVG はそのまま
+  let bmp;
+  try { bmp = await createImageBitmap(blob); } catch { return null; }
+  try {
+    const sc = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bmp.width * sc)); c.height = Math.max(1, Math.round(bmp.height * sc));
+    const ctx = c.getContext('2d'), jpg = type === 'image/jpeg';
+    if (jpg) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    const out = await new Promise(r => c.toBlob(r, jpg ? 'image/jpeg' : 'image/webp', 0.85));
+    c.width = c.height = 0;
+    return out && out.size < blob.size * 0.9 ? out : null;
+  } finally { bmp.close?.(); }
+}
+async function viewBlob(id, k){
+  const key = id + '@' + k;
+  const have = await db.get('blobs', key); if (have) return have;
+  let orig = await db.get('blobs', id), fetched = false;
+  if (!orig && k === 't') orig = await db.get('blobs', id + '@d');   // カード用はノート表示用の縮小版から作る
+  if (!orig) { orig = await getAttBlob(id, {keep: false}); fetched = true; }
+  if (!orig) return null;
+  if (orig.size < VIEW_MIN_BYTES[k]) { if (fetched && !id.startsWith('local-')) await db.put('blobs', orig, id); return orig; }
+  const small = await shrinkImage(orig, VIEW_MAX[k]);
+  const v = small || orig;
+  await db.put('blobs', v, key);
+  if (k === 't' && fetched && !id.startsWith('local-')) {   // 取り直した元画像から、ノート表示用もついでに作っておく
+    if (orig.size < VIEW_MIN_BYTES.d) await db.put('blobs', orig, id);
+    else await db.put('blobs', (await shrinkImage(orig, VIEW_MAX.d)) || orig, id + '@d');
+  }
+  if (k === 'd' && !id.startsWith('local-')) await db.del('blobs', id);
+  return v;
+}
+function attUrl(id, k = 'd'){
+  const key = id + '@' + k;
+  if (urlCache.has(key)) return Promise.resolve(urlCache.get(key));
+  if (viewJobs.has(key)) return viewJobs.get(key);
+  const job = viewBlob(id, k).then(b => { if (!b) return null; const u = URL.createObjectURL(b); urlCache.set(key, u); return u; })
+    .catch(() => null).finally(() => viewJobs.delete(key));
+  viewJobs.set(key, job); return job;
+}
+// 画像の縦横（読み込む前の場所取りに使う）
+let DIMS = null, dimsTimer;
+async function loadDims(){ if (!DIMS) DIMS = new Map(Object.entries((await db.get('kv', 'imgDims').catch(() => null)) || {})); return DIMS; }
+function rememberDims(id, w, h){
+  if (!DIMS || !w || !h) return; const d = DIMS.get(id); if (d && d[0] === w && d[1] === h) return;
+  DIMS.set(id, [w, h]); clearTimeout(dimsTimer); dimsTimer = setTimeout(() => db.put('kv', Object.fromEntries(DIMS), 'imgDims').catch(() => {}), 2000);
+}
+function scrollRootOf(el){
+  for (let p = el; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+    const cs = getComputedStyle(p); if (/(auto|scroll)/.test(cs.overflowY + ' ' + cs.overflowX)) return p;
+  }
+  return null;
+}
+function setImgSrc(el, u, id){
+  el.decoding = 'async';
+  el.onload = () => { el.classList.remove('lazy'); el.style.removeProperty('aspect-ratio'); el.style.removeProperty('--pw'); rememberDims(id, el.naturalWidth, el.naturalHeight); };
+  el.onerror = () => { el.classList.remove('lazy'); el.classList.add('missing'); };
+  el.src = u; el.classList.remove('missing');
+}
+const lazyObs = new WeakMap();
+// 画面に近づいた画像から順に読み込む
 async function hydrate(root){
-  for (const el of root.querySelectorAll('img[data-att]')){
-    const id = el.dataset.att;
-    let u = urlCache.get(id);
-    if (!u) { try { const b = await getAttBlob(id); if (b) { u = URL.createObjectURL(b); urlCache.set(id, u); } } catch (e) {} }
-    if (u) { el.src = u; el.classList.remove('missing'); } else el.classList.add('missing');
+  lazyObs.get(root)?.disconnect();
+  const imgs = [...root.querySelectorAll('img[data-att]')];
+  if (!imgs.length) return;
+  await loadDims();
+  const obs = new IntersectionObserver(es => {
+    for (const e of es) {
+      if (!e.isIntersecting) continue;
+      const el = e.target, id = el.dataset.att; obs.unobserve(el);
+      attUrl(id, 'd').then(u => { if (u) setImgSrc(el, u, id); else { el.classList.remove('lazy'); el.classList.add('missing'); } });
+    }
+  }, {root: scrollRootOf(root), rootMargin: '1500px'});
+  lazyObs.set(root, obs);
+  for (const el of imgs) {
+    const id = el.dataset.att, u = urlCache.get(id + '@d');
+    if (u) { if (el.getAttribute('src') !== u) setImgSrc(el, u, id); continue; }
+    const d = DIMS.get(id);
+    el.removeAttribute('src'); el.classList.add('lazy');
+    el.style.aspectRatio = d ? `${d[0]} / ${d[1]}` : '4 / 3';
+    el.style.setProperty('--pw', (d ? d[0] : 480) + 'px');
+    obs.observe(el);
   }
 }
 async function downscale(file){
@@ -1824,14 +1974,14 @@ function renderSettings(){
   const cs = [...S.notes.values()].filter(n => n.claude && !n.deleted).length; if (cs) info.push(`Claude共有 ${cs} 件（ドライブの NoteBox/Claude共有）`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.20-8';
+const APP_VERSION = '2026.10.21-1';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
 $('#cidInput').addEventListener('change', e => { localStorage.setItem('nb.clientId', e.target.value.trim()); updateChip(); });
 $('#connectBtn').addEventListener('click', async () => {
   localStorage.setItem('nb.clientId', $('#cidInput').value.trim());
-  await sync({interactive: true}); renderSettings();
+  await sync({interactive: true, full: true}); renderSettings();
   if (!S.error && hasToken()) toast('同期しました');
 });
 $('#disconnectBtn').addEventListener('click', () => { signOut(); toast('接続を解除しました（端末内のノートは残ります）'); });
@@ -2306,7 +2456,7 @@ function cleanTableClone(table){
   const c = table.cloneNode(true);
   c.classList.remove('tsel'); if (!c.className) c.removeAttribute('class');
   c.querySelectorAll('.cur').forEach(x => { x.classList.remove('cur'); if (!x.className) x.removeAttribute('class'); });
-  c.querySelectorAll('img').forEach(i => { i.removeAttribute('style'); i.classList.remove('sel', 'missing'); if (!i.className) i.removeAttribute('class'); });
+  c.querySelectorAll('img').forEach(i => { i.removeAttribute('style'); i.classList.remove('sel', 'missing', 'lazy'); if (!i.className) i.removeAttribute('class'); });
   return c;
 }
 function selectTable(table){
@@ -3337,7 +3487,7 @@ async function importClaudeEdit(n, html, ver){
     tags: [...new Set([...(n.tags || []), 'Claude修正版'])], created: t, updated: t, deleted: false, dirty: true, fileId: null, syncedAt: null, claude: 0, cdoc: null};
   await storeNote(c); return c;
 }
-async function syncClaudeDocs(f){
+async function syncClaudeDocs(f, changed){   // changed: 変更があったファイルID（null なら全部確認）
   const shared = [...S.notes.values()].filter(n => n.claude && !n.deleted && n.notebookId !== TPL_NB);
   const stale = [...S.notes.values()].filter(n => n.cdoc?.id && (!n.claude || n.deleted));
   if (!shared.length && !stale.length) return;
@@ -3345,7 +3495,7 @@ async function syncClaudeDocs(f){
   const made = [];
   for (const n of shared) {
     try {
-      if (n.cdoc?.id) {
+      if (n.cdoc?.id && (!changed || changed.has(n.cdoc.id))) {
         let info;
         try { info = await gjson(`${API}/files/${n.cdoc.id}?fields=version,trashed`); } catch (e) { if (e.status === 404) info = {trashed: true}; else throw e; }
         if (info.trashed) n.cdoc = null;
@@ -3368,7 +3518,7 @@ async function syncClaudeDocs(f){
     catch (e) { if (e.auth) throw e; if (e.status !== 404) continue; }
     n.cdoc = null; n.rev = now(); n.dirty = true; await storeNote(n);
   }
-  if ([...S.notes.values()].some(n => n.dirty)) await syncNotes(f);   // 写しの情報もノートに保存
+  if ([...S.notes.values()].some(n => n.dirty)) await uploadDirtyNotes(f);   // 写しの情報もノートに保存
   if (made.length) {
     renderAll();
     showBanner(made.length === 1 ? `Claudeの修正を「${made[0].title}」として保存しました` : `Claudeの修正を${made.length}件のノートとして保存しました`, '開く', () => openNote(made[0].id));
@@ -3549,8 +3699,7 @@ function observeThumbs(){
     for (const e of es) {
       if (!e.isIntersecting) continue;
       const el = e.target; thumbObs.unobserve(el);
-      const id = el.dataset.thumb; let u = urlCache.get(id);
-      if (!u) { try { const b = await getAttBlob(id); if (b) { u = URL.createObjectURL(b); urlCache.set(id, u); } } catch {} }
+      const u = await attUrl(el.dataset.thumb, 't');
       if (u) el.style.backgroundImage = `url("${u}")`;
     }
   }, {root: $('#noteList'), rootMargin: '200px'});
