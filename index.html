@@ -525,7 +525,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <div class="row"><button type="button" data-copy="scCode">コピー</button></div>
     <h4>ノートの取り込み</h4>
     <p class="hint">NoteBox用の取り込みファイル（.zip）を選ぶと、中のノートと添付ファイルをまとめて追加します。修正用ファイル（.json）を選ぶと、取り込み済みのノートに反映します。添付が多い場合はPCでの取り込みがおすすめです。同じファイルを2回取り込んでも重複はしません。</p>
-    <div class="row"><button type="button" id="importBtn">取り込みファイルを選ぶ</button></div>
+    <div class="row"><button type="button" id="importBtn">取り込みファイルを選ぶ</button><button type="button" id="pasteImportBtn">テキストを貼り付けて取り込む</button></div>
     <p id="importInfo" class="hint"></p>
     <input type="file" id="importInput" hidden>
     <div class="row end"><button value="close">閉じる</button></div>
@@ -538,6 +538,14 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <div id="linkList"></div>
     <div class="row end"><button type="button" id="linkClose">閉じる</button></div>
   </div>
+</dialog>
+<dialog id="pasteDlg">
+  <form method="dialog" class="dlg" id="pasteForm">
+    <h3>修正JSONを貼り付けて取り込む</h3>
+    <p class="hint">Claudeが出した修正JSON（{"format":"notebox-patch" …}）をそのまま貼り付けてください。前後の説明文や ``` が含まれていても大丈夫です。</p>
+    <textarea id="pasteText" style="width:100%;min-height:180px;font:12px/1.5 ui-monospace,Menlo,monospace;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)"></textarea>
+    <div class="row end"><button type="button" id="pasteCancel">キャンセル</button><button class="primary" id="pasteOk">取り込む</button></div>
+  </form>
 </dialog>
 <dialog id="verDlg">
   <div class="dlg">
@@ -696,7 +704,7 @@ function normalizeNote(d){
     notebookId: d.notebookId || null, tags: Array.isArray(d.tags) ? d.tags.map(String) : [],
     created: Number(d.created) || now(), updated: Number(d.updated) || now(), deleted: !!d.deleted,
     pinned: Number(d.pinned) || 0, rev: Number(d.rev) || 0,
-    claude: Number(d.claude) || 0, cdoc: d.cdoc && d.cdoc.id ? {id: String(d.cdoc.id), ver: String(d.cdoc.ver || ''), h: String(d.cdoc.h || ''), at: Number(d.cdoc.at) || 0} : null,
+    claude: Number(d.claude) || 0, cdoc: d.cdoc && d.cdoc.id ? {id: String(d.cdoc.id), ver: String(d.cdoc.ver || ''), h: String(d.cdoc.h || ''), at: Number(d.cdoc.at) || 0, fv: Number(d.cdoc.fv) || 1} : null,
   };
 }
 const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted, pinned:n.pinned || 0, rev:n.rev || 0, claude:n.claude || 0, cdoc:n.cdoc || null});
@@ -1672,7 +1680,7 @@ function renderSettings(){
   const cs = [...S.notes.values()].filter(n => n.claude && !n.deleted).length; if (cs) info.push(`Claude共有 ${cs} 件（ドライブの NoteBox/Claude共有）`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.20-3';
+const APP_VERSION = '2026.10.20-4';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -1840,6 +1848,7 @@ function loadJSZip(){
 }
 // 取り込み済みノートへの修正（表の色など）。編集で表の形が変わっている場合はその表だけ飛ばす
 async function applyPatch(pkg){
+  if (pkg.kind === 'revision') return applyRevision(pkg);
   if (!['table-colors', 'evernote-fix'].includes(pkg.kind)) throw new Error('この修正用ファイルの種類には対応していません');
   await flushSave(); histBefore();
   let notesHit = 0, tablesOk = 0, tablesSkip = 0, missing = 0, titled = 0, titleKept = 0;
@@ -3029,6 +3038,7 @@ $('#autoReconn').addEventListener('change', e => { try { localStorage.setItem('n
 /* ---------------- Claude共有（Googleドキュメントの写し） ---------------- */
 const CDOC_MIME = 'application/vnd.google-apps.document';
 const CLAUDE_FOLDER = 'Claude共有';
+const CDOC_FMT = 2;   // 写しの書式を変えたら上げる（既存の写しを作り直す）
 const textHash = s => { let x = 2166136261; for (const c of String(s).replace(/\s+/g, '')) { x ^= c.codePointAt(0); x = Math.imul(x, 16777619) >>> 0; } return x.toString(36); };
 function updateClaudeBtn(n){
   const b = $('#claudeBtn'); const on = !!(n && n.claude);
@@ -3075,7 +3085,7 @@ function noteToDocHtml(n){
   doc.querySelectorAll('[class]').forEach(e => e.removeAttribute('class'));
   doc.querySelectorAll('[contenteditable],[data-cid],[data-c],[data-ct],[data-note],[data-att],[data-name],[data-w]').forEach(e => { for (const a of ['contenteditable','data-cid','data-c','data-ct','data-note','data-att','data-name','data-w']) e.removeAttribute(a); });
   const nb = n.notebookId && nbById(n.notebookId) ? nbPath(n.notebookId) : '未分類';
-  const info = `NoteBox｜ノートブック：${nb}${(n.tags || []).length ? '｜タグ：' + n.tags.map(t => '#' + t).join(' ') : ''}`;
+  const info = `NoteBox｜ID：${n.id}｜ノートブック：${nb}${(n.tags || []).length ? '｜タグ：' + n.tags.map(t => '#' + t).join(' ') : ''}`;
   return `<html><head><meta charset="utf-8"></head><body><p style="color:#888888;font-size:9pt">${esc(info)}</p>${doc.body.innerHTML}</body></html>`;
 }
 
@@ -3117,7 +3127,10 @@ function docsHtmlToNoteBody(html, src){
   // 先頭の「NoteBox｜…」の行は除く
   const first = [...doc.body.children].find(x => x.textContent.trim());
   if (first && first.textContent.trim().startsWith('NoteBox｜')) first.remove();
-  // 画像・添付・リンクの目印を元に戻す
+  return sanitize(restoreMarkers(doc.body.innerHTML.replace(/<p[^>]*>\s*<\/p>/g, '<p><br></p>'), src)).replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
+}
+// 画像・添付・リンク・コメントの目印を元に戻す
+function restoreMarkers(out, src){
   const atts = new Map(), files = new Map();
   if (src) {
     const sd = new DOMParser().parseFromString(`<body>${src.body}</body>`, 'text/html');
@@ -3125,12 +3138,10 @@ function docsHtmlToNoteBody(html, src){
     sd.querySelectorAll('a.att').forEach(a => files.set(a.dataset.name || '', a.outerHTML));
   }
   const byTitle = new Map([...S.notes.values()].filter(n => !n.deleted).map(n => [n.title, n.id]));
-  let out = doc.body.innerHTML.replace(/<p[^>]*>\s*<\/p>/g, '<p><br></p>');
-  out = out.replace(/【画像：([^】]*)】/g, (m, name) => atts.get(htmlDecode(name)) || m)
+  return out.replace(/【画像：([^】]*)】/g, (m, name) => atts.get(htmlDecode(name)) || m)
     .replace(/【添付：([^】]*)】/g, (m, name) => files.get(htmlDecode(name)) || m)
     .replace(/【リンク：([^】]*)】/g, (m, t) => { const id = byTitle.get(htmlDecode(t)); return id ? `<a class="nlink" data-note="${esc(id)}" contenteditable="false">${t}</a>` : m; })
     .replace(/〔コメント：([^〕]*)〕/g, (m, c) => `<span class="cmt" data-cid="c${uid().slice(0, 8)}" data-c="${esc(htmlDecode(c))}" data-ct="${now()}">※</span>`);
-  return sanitize(out).replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
 }
 function htmlDecode(s){ const t = document.createElement('textarea'); t.innerHTML = s; return t.value; }
 
@@ -3159,7 +3170,7 @@ async function pushDoc(n, folder){
   const r = await uploadDoc({fileId: id, name, html, parent: folder, noteId: n.id});
   const exported = await exportDoc(r.id).catch(() => '');
   const meta = await gjson(`${API}/files/${r.id}?fields=version`).catch(() => r);
-  return {id: r.id, ver: String(meta.version || r.version || ''), h: textHash(docPlain(exported)), at: revOf(n)};
+  return {id: r.id, ver: String(meta.version || r.version || ''), h: textHash(docPlain(exported)), at: revOf(n), fv: CDOC_FMT};
 }
 async function importClaudeEdit(n, html, ver){
   const id = 'cr-' + textHash(n.cdoc.id + '|' + ver);
@@ -3189,7 +3200,7 @@ async function syncClaudeDocs(f){
           }
         }
       }
-      if (!n.cdoc || n.cdoc.at !== revOf(n)) {
+      if (!n.cdoc || n.cdoc.at !== revOf(n) || (n.cdoc.fv || 1) !== CDOC_FMT) {
         const rv = Math.max(now(), revOf(n) + 1);
         n.rev = rv; n.cdoc = await pushDoc(n, folder); n.cdoc.at = rv; n.dirty = true; await storeNote(n);
       }
@@ -3206,6 +3217,125 @@ async function syncClaudeDocs(f){
     showBanner(made.length === 1 ? `Claudeの修正を「${made[0].title}」として保存しました` : `Claudeの修正を${made.length}件のノートとして保存しました`, '開く', () => openNote(made[0].id));
   }
 }
+
+/* ---------------- Claudeの修正JSON（revision）の取り込み ---------------- */
+// Markdown → ノート用HTML（Claudeが書く範囲の書式に対応）
+function mdToHtml(md){
+  const notes = new Map();
+  md = String(md || '').replace(/\r\n?/g, '\n').replace(/^\[\^([^\]]+)\]:\s*(.*)$/gm, (m, k, t) => { notes.set(k, t.trim()); return ''; });
+  const inl = s => {
+    const codes = []; s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
+    s = esc(s)
+      .replace(/\[\^([^\]]+)\]/g, (m, k) => notes.has(k) ? `〔コメント：${esc(notes.get(k))}〕` : m)
+      .replace(/\[\[([^\]]+)\]\]/g, '【リンク：$1】')
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^\w])__([^_]+)__(?!\w)/g, '$1<b>$2</b>')
+      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>')
+      .replace(/~~([^~]+)~~/g, '<s>$1</s>')
+      .replace(/==([^=]+)==/g, '<mark>$1</mark>')
+      .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>')
+      .replace(/ {2}$/, '<br>').replace(/&lt;br\s*\/?&gt;/g, '<br>');
+    return s.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${esc(codes[i])}</code>`);
+  };
+  const L = md.split('\n'), out = []; let i = 0, blanks = 0;
+  const listRe = /^(\s*)([-*+]|\d+[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/;
+  while (i < L.length) {
+    const l = L[i];
+    if (!l.trim()) { blanks++; i++; continue; }
+    if (blanks >= 2 && out.length) out.push('<p><br></p>');
+    blanks = 0;
+    if (/^```/.test(l)) { const buf = []; i++; while (i < L.length && !/^```/.test(L[i])) buf.push(L[i++]); i++; out.push(`<pre>${esc(buf.join('\n'))}</pre>`); continue; }
+    if (/^\s*<(table|ul|ol|p|h[1-6]|div|blockquote|pre)[\s>]/i.test(l)) { const buf = []; while (i < L.length && L[i].trim()) buf.push(L[i++]); out.push(buf.join('\n')); continue; }
+    let m;
+    if ((m = l.match(/^(#{1,6})\s+(.*)$/))) { const lv = Math.min(4, m[1].length); out.push(`<h${lv}>${inl(m[2].trim())}</h${lv}>`); i++; continue; }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) { out.push('<hr>'); i++; continue; }
+    if (/^\s*>/.test(l)) { const buf = []; while (i < L.length && /^\s*>/.test(L[i])) buf.push(L[i++].replace(/^\s*>\s?/, '')); out.push(`<blockquote>${mdToHtml(buf.join('\n'))}</blockquote>`); continue; }
+    if (/^\s*\|/.test(l) && i + 1 < L.length && /^\s*\|?\s*:?-{2,}/.test(L[i + 1])) {
+      const row = s => s.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map(c => inl(c.trim().replace(/\\\|/g, '|')) || '<br>');
+      const head = row(l); i += 2; const rows = [];
+      while (i < L.length && /^\s*\|/.test(L[i])) rows.push(row(L[i++]));
+      out.push(`<table><tbody><tr>${head.map(c => `<th>${c}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      continue;
+    }
+    if (listRe.test(l)) {
+      const items = [];
+      while (i < L.length && (m = L[i].match(listRe))) { items.push({ind: m[1].replace(/\t/g, '  ').length, ord: /\d/.test(m[2]), chk: m[3] !== undefined, done: /x/i.test(m[3] || ''), text: m[4]}); i++; }
+      let html = ''; const st = [];
+      for (const it of items) {
+        while (st.length && it.ind < st[st.length - 1].ind) html += `</li></${st.pop().tag}>`;
+        const top = st[st.length - 1];
+        if (!top || it.ind > top.ind) { const tag = it.ord ? 'ol' : 'ul'; html += `<${tag}${it.chk ? ' class="check"' : ''}>`; st.push({ind: it.ind, tag}); }
+        else html += '</li>';
+        html += `<li${it.done ? ' class="done"' : ''}>${inl(it.text)}`;
+      }
+      while (st.length) html += `</li></${st.pop().tag}>`;
+      out.push(html); continue;
+    }
+    out.push(`<p>${inl(l)}</p>`); i++;
+  }
+  return out.join('');
+}
+function findSourceNote(r){
+  if (r.sourceId && S.notes.has(r.sourceId)) return S.notes.get(r.sourceId);
+  const t = String(r.sourceTitle || '').trim(); if (!t) return null;
+  const c = [...S.notes.values()].filter(n => !n.deleted && n.title === t);
+  return c.length === 1 ? c[0] : null;
+}
+async function applyRevision(pkg){
+  await flushSave(); histBefore();
+  const list = Array.isArray(pkg.notes) ? pkg.notes : [];
+  if (!list.length) throw new Error('修正内容が入っていません');
+  const made = [], replaced = [], skipped = [];
+  const backup = new Map();
+  for (const r of list) {
+    if (typeof r.body !== 'string') { skipped.push(r.title || r.sourceTitle || '?'); continue; }
+    const src = findSourceNote(r);
+    const raw = (r.format || 'markdown') === 'html' ? r.body : mdToHtml(r.body);
+    const body = sanitize(restoreMarkers(raw, src)).replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
+    if (r.mode === 'replace' && src && !src.deleted) {
+      backup.set(src.id, {title: src.title, body: src.body, text: src.text, tags: src.tags});
+      src.body = body; src.text = htmlToText(body); if (r.title) src.title = String(r.title);
+      if (Array.isArray(r.tags)) src.tags = [...new Set([...(src.tags || []), ...r.tags.map(String)])];
+      src.updated = now(); src.dirty = true; await storeNote(src); replaced.push(src);
+      if (src.id === S.currentId) { loadIntoEditor(src); }
+      continue;
+    }
+    const id = 'cr-' + textHash((r.sourceId || r.sourceTitle || '') + '|' + (r.title || '') + '|' + r.body);
+    if (S.notes.has(id) && !S.notes.get(id).deleted) { skipped.push(S.notes.get(id).title); continue; }
+    const t = now();
+    const n = {id, title: String(r.title || ((src ? src.title : (r.sourceTitle || '無題のノート')) + '（Claude修正版）')),
+      body, text: htmlToText(body), notebookId: src && src.notebookId !== TPL_NB ? (src.notebookId || null) : null,
+      tags: [...new Set([...(src ? src.tags || [] : []), ...(Array.isArray(r.tags) ? r.tags.map(String) : []), 'Claude修正版'])],
+      created: t, updated: t, deleted: false, dirty: true, fileId: null, syncedAt: null, claude: 0, cdoc: null};
+    await storeNote(n); made.push(n);
+  }
+  renderAll(); scheduleSync(800);
+  if (backup.size) showBanner(`${backup.size}件のノートにClaudeの修正を反映しました`, '元に戻す', async () => {
+    for (const [id, b] of backup) { const n = S.notes.get(id); if (!n) continue; Object.assign(n, b, {updated: now(), dirty: true}); await storeNote(n); if (id === S.currentId) loadIntoEditor(n); }
+    renderAll(); scheduleSync(); toast('元に戻しました');
+  });
+  const first = made[0] || replaced[0];
+  if (first) { if ($('#settings').open) $('#settings').close(); openNote(first.id); }
+  return [made.length ? `${made.length}件の修正版ノートを作成しました` : '', replaced.length ? `${replaced.length}件のノートを書き換えました` : '',
+    skipped.length ? `取り込み済みなどで${skipped.length}件はスキップしました` : ''].filter(Boolean).join('／') || '取り込む内容がありませんでした';
+}
+// 貼り付けで取り込む
+function extractJson(text){
+  const s = String(text || '').replace(/^﻿/, '');
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error('JSONが見つかりませんでした');
+  return JSON.parse(s.slice(a, b + 1));
+}
+$('#pasteImportBtn').addEventListener('click', () => { $('#pasteText').value = ''; $('#pasteDlg').showModal(); setTimeout(() => $('#pasteText').focus(), 50); });
+$('#pasteCancel').addEventListener('click', () => $('#pasteDlg').close());
+$('#pasteForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  try {
+    const pkg = extractJson($('#pasteText').value);
+    if (pkg.format !== 'notebox-patch') throw new Error('NoteBoxの修正用データではありません');
+    $('#pasteDlg').close();
+    const msg = await applyPatch(pkg); $('#importInfo').textContent = msg; toast(msg);
+  } catch (err) { toast('取り込めませんでした：' + err.message); }
+});
 
 /* ---------------- boot ---------------- */
 (async () => {
