@@ -36,7 +36,13 @@ body.resizing iframe,body.resizing #editor{pointer-events:none}
 body[data-full] #sidebar,body[data-full] #listPane,body[data-full] .split{display:none}
 body[data-full] #app{grid-template-columns:minmax(0,1fr)}
 body[data-full] .ed-body{max-width:960px;width:100%;margin:0 auto}
-#fullBtn{color:var(--mute)}#fullBtn:hover{color:var(--fg)}
+#fullBtn,#winBtn{color:var(--mute)}#fullBtn:hover,#winBtn:hover{color:var(--fg)}
+body[data-solo] #sidebar,body[data-solo] #listPane,body[data-solo] .split,body[data-solo] #fullBtn,body[data-solo] #winBtn,body[data-solo] #backBtn{display:none!important}
+body[data-solo] #app{grid-template-columns:minmax(0,1fr)!important}
+body[data-solo] #editorPane{display:flex!important}
+body[data-solo] .ed-body{max-width:980px;width:100%;margin:0 auto}
+.solo-tag{font-size:11px;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:2px 8px;white-space:nowrap;display:none}
+body[data-solo] .solo-tag{display:inline-block}
 #pinBtn{color:var(--mute)}#pinBtn.on{color:var(--accent)}#pinBtn.on svg{fill:currentColor}
 .pin-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border-radius:8px;text-align:left;color:var(--side-fg);font-size:14px}
 .pin-item:hover{background:var(--side-hi)}
@@ -440,6 +446,8 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
     <div id="editorWrap" hidden>
       <header class="ed-head">
         <button class="icon-btn" id="fullBtn" aria-label="大きくする" title="大きくする"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+        <button class="icon-btn" id="winBtn" aria-label="別のウィンドウで開く" title="別のウィンドウで開く"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="14" height="14" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v11"/></svg></button>
+        <span class="solo-tag">別ウィンドウ</span>
         <button class="icon-btn mobile-only" id="backBtn" aria-label="戻る">‹</button>
         <select id="nbSelect" aria-label="ノートブック"></select>
         <span class="spacer"></span>
@@ -697,6 +705,12 @@ function htmlToText(html){
 }
 const parseTags = s => [...new Set(String(s).split(/[,，、]/).map(t => t.trim()).filter(Boolean))];
 
+/* ---------------- ウィンドウ間の連携 ---------------- */
+const QS = new URLSearchParams(location.search);
+const SOLO = QS.has('solo') && QS.get('note') ? QS.get('note') : null;   // 別ウィンドウ（ノート1枚表示）
+const BC = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('notebox') : null;
+function bcPost(m){ try { BC?.postMessage(m); } catch {} }
+
 /* ---------------- IndexedDB ---------------- */
 const db = {
   _db: null,
@@ -723,8 +737,12 @@ const db = {
     });
   },
   get(s, k){ return this._tx(s, 'readonly', st => st.get(k)); },
-  put(s, v, k){ return this._tx(s, 'readwrite', st => k === undefined ? st.put(v) : st.put(v, k)); },
-  del(s, k){ return this._tx(s, 'readwrite', st => st.delete(k)); },
+  async put(s, v, k){
+    const r = await this._tx(s, 'readwrite', st => k === undefined ? st.put(v) : st.put(v, k));
+    if (s === 'notes') bcPost({t: 'note', n: v}); else if (s === 'kv' && k === 'notebooks') bcPost({t: 'nbs'});
+    return r;
+  },
+  async del(s, k){ const r = await this._tx(s, 'readwrite', st => st.delete(k)); if (s === 'notes') bcPost({t: 'del', id: k}); return r; },
   all(s){ return this._tx(s, 'readonly', st => st.getAll()); },
 };
 
@@ -892,7 +910,12 @@ async function isGone(fileId){
 /* ---------------- sync ---------------- */
 let syncTimer;
 function scheduleSync(ms = 3000){ clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(), ms); }
-async function sync({interactive = false} = {}){
+async function sync(opts = {}){
+  if (SOLO) { bcPost({t: 'sync'}); return; }   // 同期はメインのウィンドウが行う
+  if (navigator.locks && !opts._locked) {    // 複数のタブで同時に同期しない
+    return navigator.locks.request('nb-sync', {ifAvailable: true}, async lock => { if (!lock) { scheduleSync(8000); return; } return sync({...opts, _locked: true}); });
+  }
+  const interactive = !!opts.interactive;
   if (S.syncing || S.importing) { S.syncAgain = true; return; }
   if (!navigator.onLine) { updateChip(); return; }
   if (!hasToken()) {
@@ -1093,6 +1116,7 @@ async function saveCurrent(){
   S.loadedUpdated = n.updated;
   await storeNote(n);
   updateSaveState(n); renderList(); renderNav(); updateChip(); scheduleSync(4000);
+  if (SOLO) document.title = (n.title || '無題のノート') + ' - NoteBox';
 }
 function updateSaveState(n){
   $('#saveState').textContent = n.deleted ? 'ゴミ箱' : n.dirty ? '端末に保存済み' : (n.fileId ? 'ドライブと同期済み' : '');
@@ -3650,6 +3674,39 @@ $('#slashPop').addEventListener('mousedown', e => e.preventDefault());
 $('#slashPop').addEventListener('click', e => { const it = e.target.closest('.it'); if (it) runSlash(Number(it.dataset.i)); });
 document.addEventListener('pointerdown', e => { if (SP.open && !e.target.closest('#slashPop')) hideSlash(); }, true);
 
+/* ---------------- 別ウィンドウで開く ---------------- */
+function openInWindow(id){
+  flushSave();
+  const url = location.pathname + '?solo=1&note=' + encodeURIComponent(id);
+  const w = window.open(url, 'nb-' + id, 'popup,width=860,height=920');
+  if (!w) location.href = url;   // ポップアップが使えない環境では同じ画面で開く
+  else w.focus();
+}
+$('#winBtn').addEventListener('click', () => { if (S.currentId) openInWindow(S.currentId); });
+addMoreItem({k: 'win', label: '🗗 別のウィンドウで開く', run: n => openInWindow(n.id), show: () => !SOLO});
+let bcRenderT = null;
+const bcRender = () => { clearTimeout(bcRenderT); bcRenderT = setTimeout(() => { if (!SOLO) renderAll(); else updateChip(); }, 120); };
+if (BC) BC.onmessage = async ({data: m}) => {
+  if (!m) return;
+  if (m.t === 'note') {
+    const n = m.n; S.notes.set(n.id, n);
+    if (n.id === S.currentId) {
+      if (!saveTimer && n.updated !== S.loadedUpdated) loadIntoEditor(n);
+      else { updateSaveState(n); updatePinBtn(n); updateClaudeBtn(n); }
+      if (SOLO) document.title = (n.title || '無題のノート') + ' - NoteBox';
+    }
+    bcRender();
+    if (!SOLO && n.dirty) scheduleSync(4000);
+  } else if (m.t === 'del') {
+    S.notes.delete(m.id);
+    if (m.id === S.currentId) { S.currentId = null; showEditor(false); toast('このノートは削除されました'); }
+    bcRender();
+  } else if (m.t === 'nbs') {
+    S.notebooks = (await db.get('kv', 'notebooks')) || S.notebooks; bcRender();
+    if (S.currentId) renderNbSelect(S.notes.get(S.currentId));
+  } else if (m.t === 'sync' && !SOLO) scheduleSync(1500);
+};
+
 /* ---------------- boot ---------------- */
 (async () => {
   try { await db.open(); }
@@ -3659,6 +3716,13 @@ document.addEventListener('pointerdown', e => { if (SP.open && !e.target.closest
   S.lastSyncAt = (await db.get('kv', 'lastSync')) || 0;
   try { const t = JSON.parse(localStorage.getItem('nb.token') || 'null'); if (t && t.e > now()) { S.token = t.t; S.tokenExp = t.e; } } catch {}
   showEditor(false); renderAll();
+  if (SOLO) {
+    document.body.dataset.solo = '1';
+    if (S.notes.has(SOLO)) { await openNote(SOLO, {push: false}); document.title = (S.notes.get(SOLO).title || '無題のノート') + ' - NoteBox'; }
+    else $('#emptyEditor').textContent = 'ノートが見つかりません（メインの画面で同期してから開き直してください）';
+    try { const t = JSON.parse(localStorage.getItem('nb.token') || 'null'); if (t && t.e > now()) { S.token = t.t; S.tokenExp = t.e; } } catch {}
+    return;
+  }
   const clipped = await handleIncomingClip();
   if (!clipped && !isNarrow()) { const first = visibleNotes()[0]; if (first) openNote(first.id, {push: false}); }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
