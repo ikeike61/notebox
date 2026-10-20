@@ -116,6 +116,26 @@ body[data-full] .ed-body{max-width:960px;width:100%;margin:0 auto}
 #noteList{list-style:none;margin:0;padding:0;overflow:auto;flex:1;min-height:0;padding-bottom:env(safe-area-inset-bottom)}
 .note-item{padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;position:relative}
 .selmode .note-item{padding-left:46px}
+#noteList.v-compact .note-item{padding:7px 14px}
+#noteList.v-compact .ni-snip,#noteList.v-compact .ni-tags{display:none}
+#noteList.v-compact .ni-row{display:flex;align-items:baseline;gap:8px}
+#noteList.v-compact .ni-title{flex:1;font-weight:500;font-size:14px}
+#noteList.v-compact .ni-meta{margin-top:0;flex:none}
+#noteList.v-compact .ni-meta .nbn{display:none}
+#noteList.v-card{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;padding:10px;align-content:start}
+#noteList.v-card .note-item{border:1px solid var(--line);border-radius:12px;padding:0;overflow:hidden;display:flex;flex-direction:column;background:var(--panel)}
+#noteList.v-card .note-item.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+#noteList.v-card .ni-thumb{height:92px;background:var(--sel) center/cover no-repeat;flex:none}
+#noteList.v-card .ni-body{padding:8px 10px 10px;display:flex;flex-direction:column;min-height:0}
+#noteList.v-card .ni-title{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:14px}
+#noteList.v-card .ni-snip{-webkit-line-clamp:3;font-size:12px}
+#noteList.v-card .ni-meta{flex-wrap:wrap;gap:6px;margin-top:6px}
+#noteList.v-card .ni-meta .nbn,#noteList.v-card .ni-meta .tag:nth-child(n+5){display:none}
+#noteList.v-card .list-empty{grid-column:1/-1}
+.selmode #noteList.v-card .note-item{padding-left:0}
+.selmode #noteList.v-card .note-item::before{z-index:2;background:var(--panel)}
+.ni-arch{font-size:11px;color:var(--mute)}
+#sortBtn{font-size:15px}
 .selmode .note-item::before{content:"";position:absolute;left:16px;top:15px;width:18px;height:18px;border-radius:50%;border:2px solid var(--mute)}
 .selmode .note-item.checked{background:var(--accent-soft)}
 .selmode .note-item.checked::before{background:var(--accent);border-color:var(--accent);box-shadow:inset 0 0 0 3px var(--panel)}
@@ -351,6 +371,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 .dlg h4{margin:8px 0 0;font-size:15px;border-top:1px solid var(--line);padding-top:14px}
 .dlg textarea{width:100%;height:64px;font:12px/1.4 ui-monospace,Menlo,monospace;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);resize:vertical}
 #banner{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:40;background:var(--panel);color:var(--fg);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.18);border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;font-size:14px;width:max-content;max-width:94vw}
+body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area-inset-bottom))}
 #banner button{border-radius:8px;padding:7px 12px;font-size:13px;white-space:nowrap;flex:none}
 #banner span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #banner .primary{background:var(--accent);color:var(--accent-fg)}
@@ -397,6 +418,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     <header class="list-head">
       <button class="icon-btn mobile-only" id="menuBtn" aria-label="メニュー">☰</button>
       <h2 id="listTitle">すべてのノート</h2>
+      <button class="icon-btn" id="sortBtn" title="並べ替え・表示" aria-label="並べ替え・表示">⇅</button>
       <button class="icon-btn text" id="selBtn" title="複数選択">選択</button>
       <button class="icon-btn" id="tplBtn" aria-label="テンプレートから作成" title="テンプレートから作成">📋</button>
       <button class="icon-btn" id="newNoteList" aria-label="新しいノート">＋</button>
@@ -717,10 +739,11 @@ function normalizeNote(d){
     notebookId: d.notebookId || null, tags: Array.isArray(d.tags) ? d.tags.map(String) : [],
     created: Number(d.created) || now(), updated: Number(d.updated) || now(), deleted: !!d.deleted,
     pinned: Number(d.pinned) || 0, rev: Number(d.rev) || 0,
+    archived: Number(d.archived) || 0,
     claude: Number(d.claude) || 0, cdoc: d.cdoc && d.cdoc.id ? {id: String(d.cdoc.id), ver: String(d.cdoc.ver || ''), h: String(d.cdoc.h || ''), at: Number(d.cdoc.at) || 0, fv: Number(d.cdoc.fv) || 1} : null,
   };
 }
-const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted, pinned:n.pinned || 0, rev:n.rev || 0, claude:n.claude || 0, cdoc:n.cdoc || null});
+const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted, pinned:n.pinned || 0, rev:n.rev || 0, archived:n.archived || 0, claude:n.claude || 0, cdoc:n.cdoc || null});
 // 同期で使う版番号（ピン留めなど、更新日時を変えない変更でも上がる）
 const revOf = n => Math.max(Number(n.rev) || 0, Number(n.updated) || 0);
 const activeNotebooks = () => S.notebooks.filter(n => !n.deleted).sort((a,b) => a.name.localeCompare(b.name, 'ja'));
@@ -1605,7 +1628,8 @@ function setFilter(type, value = ''){
 }
 const ICON_PIN_SM = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>';
 function renderNav(){
-  const live = [...S.notes.values()].filter(n => !n.deleted);
+  const all = [...S.notes.values()].filter(n => !n.deleted);
+  const live = all.filter(n => !n.archived), archivedN = all.length - live.length;
   const f = S.filter;
   const item = (type, value, label, count, extra = '') =>
     `<button class="nav-item ${!S.query && f.type === type && f.value === value ? 'active' : ''}" data-type="${type}" data-value="${esc(value)}"><span class="lbl">${esc(label)}</span>${extra}<span class="cnt">${count}</span></button>`;
@@ -1643,7 +1667,7 @@ function renderNav(){
     h += head('tag', 'タグ', tags.size, !S.query && f.type === 'tag');
     if (!secs.tag) for (const [t, c] of [...tags].sort((a,b) => a[0].localeCompare(b[0], 'ja'))) h += item('tag', t, '# ' + t, c).replace('<span class="lbl">', `<span class="tdot" style="--h:${tagHue(t)}"></span><span class="lbl">`);
   }
-  h += `<div class="nav-sec"><span></span></div>` + item('trash', '', '🗑 ゴミ箱', S.notes.size - live.length);
+  h += `<div class="nav-sec"><span></span></div>` + item('archive', '', '🗄 アーカイブ', archivedN) + item('trash', '', '🗑 ゴミ箱', S.notes.size - all.length);
   $('#nav').innerHTML = h;
   updateAccAll();
 }
@@ -1654,13 +1678,14 @@ function visibleNotes(){
   if (terms.length) {
     arr = arr.filter(n => !n.deleted && (h => terms.every(t => h.includes(t)))(norm(`${n.title} ${n.text} ${(n.tags || []).join(' ')} ${notebookName(n.notebookId)}`)));
   } else if (f.type === 'trash') arr = arr.filter(n => n.deleted);
+  else if (f.type === 'archive') arr = arr.filter(n => !n.deleted && n.archived);
   else {
-    arr = arr.filter(n => !n.deleted);
+    arr = arr.filter(n => !n.deleted && !n.archived);
     if (f.type === 'nb') { const ids = f.value ? new Set([f.value, ...nbDescendants(f.value)]) : null; arr = arr.filter(n => ids ? ids.has(nbOf(n)) : !nbOf(n)); }
     if (f.type === 'tag') arr = arr.filter(n => (n.tags || []).includes(f.value));
     if (f.type === 'all') arr = arr.filter(n => n.notebookId !== TPL_NB);
   }
-  return arr.sort((a, b) => b.updated - a.updated);
+  return sortNotes(arr);
 }
 function listTitle(){
   if (S.query) return '検索結果';
@@ -1668,6 +1693,7 @@ function listTitle(){
   if (f.type === 'nb') return f.value ? nbPath(f.value) : '未分類';
   if (f.type === 'tag') return '# ' + f.value;
   if (f.type === 'trash') return 'ゴミ箱';
+  if (f.type === 'archive') return 'アーカイブ';
   return 'すべてのノート';
 }
 function renderList(){
@@ -1680,14 +1706,24 @@ function renderList(){
     $('#noteList').innerHTML = `<li class="list-empty">${S.query ? '見つかりませんでした' : S.filter.type === 'trash' ? 'ゴミ箱は空です' : 'ノートはまだありません<br>＋ で作成できます'}</li>`;
     return;
   }
-  $('#noteList').innerHTML = notes.map(n => {
+  const view = listView(), list = $('#noteList');
+  list.className = 'v-' + view;
+  const dateOf = n => fmtTime(getSort().key === 'created' ? n.created : n.updated);
+  list.innerHTML = notes.map(n => {
     const tags = (n.tags || []).slice(0, 3).map(t => `<span class="tag" style="--h:${tagHue(t)}">#${esc(t)}</span>`).join('');
-    return `<li class="note-item ${n.id === S.currentId && !S.selMode ? 'active' : ''} ${S.selected.has(n.id) ? 'checked' : ''}" data-id="${esc(n.id)}">
-      <div class="ni-title">${n.pinned && !n.deleted ? `<span class="ni-pin" title="ピン留め中">${ICON_PIN_SM}</span> ` : ''}${esc(n.title || '無題のノート')}</div>
-      <div class="ni-snip">${esc((n.text || '').slice(0, 120)) || '&nbsp;'}</div>
-      <div class="ni-meta">${n.claude && !n.deleted ? '<span class="ni-claude" title="Claudeと共有中">◆Claude</span>' : ''}<span>${fmtTime(n.updated)}</span><span>${esc(notebookName(n.notebookId))}</span>${n.body.includes('<img') ? '<span>🖼</span>' : ''}${tags}${n.dirty ? '<span class="unsynced" title="未同期">●</span>' : ''}</div>
-    </li>`;
+    const meta = `<div class="ni-meta">${n.claude && !n.deleted ? '<span class="ni-claude" title="Claudeと共有中">◆Claude</span>' : ''}${n.archived && S.query ? '<span class="ni-arch">🗄アーカイブ</span>' : ''}<span>${dateOf(n)}</span><span class="nbn">${esc(notebookName(n.notebookId))}</span>${view !== 'card' && n.body.includes('<img') ? '<span>🖼</span>' : ''}${view === 'compact' ? '' : tags}${n.dirty ? '<span class="unsynced" title="未同期">●</span>' : ''}</div>`;
+    const title = `<div class="ni-title">${n.pinned && !n.deleted ? `<span class="ni-pin" title="ピン留め中">${ICON_PIN_SM}</span> ` : ''}${esc(n.title || '無題のノート')}</div>`;
+    const snip = `<div class="ni-snip">${esc((n.text || '').slice(0, 140)) || '&nbsp;'}</div>`;
+    const cls = `note-item ${n.id === S.currentId && !S.selMode ? 'active' : ''} ${S.selected.has(n.id) ? 'checked' : ''}`;
+    if (view === 'card') {
+      const m = n.body.match(/<img[^>]*data-att="([^"]+)"/) || n.body.match(/<img[^>]*src="(https?:[^"]+)"/);
+      const th = m ? (m[1].startsWith('http') ? `<div class="ni-thumb" style="background-image:url('${esc(m[1])}')"></div>` : `<div class="ni-thumb" data-thumb="${esc(m[1])}"></div>`) : '';
+      return `<li class="${cls}" data-id="${esc(n.id)}">${th}<div class="ni-body">${title}${snip}${meta}</div></li>`;
+    }
+    if (view === 'compact') return `<li class="${cls}" data-id="${esc(n.id)}"><div class="ni-row">${title}${meta}</div></li>`;
+    return `<li class="${cls}" data-id="${esc(n.id)}">${title}${snip}${meta}</li>`;
   }).join('');
+  if (view === 'card') observeThumbs();
 }
 function updateChip(){
   const chip = $('#syncChip'), pending = [...S.notes.values()].filter(n => n.dirty).length;
@@ -1865,6 +1901,7 @@ function showBanner(text, actLabel, act){
   $('#bannerText').textContent = text; $('#bannerAct').textContent = actLabel;
   $('#bannerAct').onclick = () => { hideBanner(); act(); };
   $('#banner').hidden = false;
+  clearTimeout(showBanner.t); showBanner.t = setTimeout(hideBanner, 12000);
 }
 function hideBanner(){ $('#banner').hidden = true; }
 $('#bannerClose').addEventListener('click', hideBanner);
@@ -2391,12 +2428,14 @@ function setSelMode(on){ S.selMode = on; if (!on) S.selected.clear(); renderList
 $('#selBtn').addEventListener('click', () => setSelMode(!S.selMode));
 function renderBulkBar(){
   const bar = $('#bulkBar');
+  document.body.classList.toggle('has-bulk', S.selMode);
   if (!S.selMode) { bar.hidden = true; return; }
   bar.hidden = false;
   const n = S.selected.size, trash = S.filter.type === 'trash' && !S.query;
   bar.innerHTML = `<span class="n">${n}件</span><button data-b="all">全選択</button>` + (n ? (trash
     ? `<button data-b="restore">復元</button><button data-b="purge" class="danger">完全に削除</button>`
-    : `<button data-b="move">移動</button><button data-b="tag">タグ</button><button data-b="pin">ピン</button><button data-b="claude">Claude共有</button><button data-b="trash" class="danger">ゴミ箱へ</button>`) : '')
+    : S.filter.type === 'archive' && !S.query ? `<button data-b="unarchive">アーカイブから戻す</button><button data-b="dup">複製</button><button data-b="trash" class="danger">ゴミ箱へ</button>`
+    : `<button data-b="move">移動</button><button data-b="tag">タグ</button><button data-b="pin">ピン</button><button data-b="dup">複製</button><button data-b="archive">アーカイブ</button><button data-b="claude">Claude共有</button><button data-b="trash" class="danger">ゴミ箱へ</button>`) : '')
     + `<span style="flex:1"></span><button data-b="done" class="done">完了</button>`;
 }
 async function chooseNotebook(title){
@@ -2442,6 +2481,9 @@ $('#bulkBar').addEventListener('click', async e => {
       if (S.currentId) updatePinBtn(S.notes.get(S.currentId));
       renderAll(); scheduleSync(); toast(all ? 'ピン留めを外しました' : 'ピン留めしました'); setSelMode(false); break;
     }
+    case 'archive': await archiveNotes(ids, true); setSelMode(false); break;
+    case 'unarchive': await archiveNotes(ids, false); setSelMode(false); break;
+    case 'dup': { const c = await duplicateNotes(ids); setSelMode(false); toast(`${c.length}件を複製しました`); break; }
     case 'claude': {
       const all = ids.every(id => S.notes.get(id)?.claude);
       await setClaudeShare(ids, !all); toast(all ? `${ids.length}件のClaude共有をオフにしました` : `${ids.length}件をClaudeと共有しました`); setSelMode(false); break;
@@ -2464,7 +2506,7 @@ function dragTargetAt(x, y){
   const el = document.elementFromPoint(x, y); if (!el) return null;
   const sec = el.closest('[data-nbroot]'); if (sec && DRAG.kind === 'nb') return sec;
   const t = el.closest('#nav .nav-item, #nav .pin-item'); if (!t) return null;
-  if (DRAG.kind === 'note') return (t.dataset.type === 'nb' || t.dataset.type === 'tag' || t.dataset.type === 'trash' || t.classList.contains('pin-item')) ? t : null;
+  if (DRAG.kind === 'note') return (['nb', 'tag', 'trash', 'archive'].includes(t.dataset.type) || t.classList.contains('pin-item')) ? t : null;
   if (DRAG.kind === 'nb') return (t.dataset.type === 'nb' && t.dataset.value && t.dataset.value !== DRAG.ids[0] && !nbDescendants(DRAG.ids[0]).has(t.dataset.value)) ? t : null;
   return null;
 }
@@ -2503,6 +2545,7 @@ async function endDrag(cancel){
   }
   if (t.dataset.type === 'nb') { await moveNotes(ids, t.dataset.value || null); if (S.selMode) setSelMode(false); if (isNarrow()) closeDrawer(); return; }
   if (t.dataset.type === 'tag') { await tagNotes(ids, t.dataset.value); if (isNarrow()) closeDrawer(); return; }
+  if (t.dataset.type === 'archive') { await archiveNotes(ids, true); if (S.selMode) setSelMode(false); if (isNarrow()) closeDrawer(); return; }
   if (t.dataset.type === 'trash') {
     if (isNarrow()) closeDrawer();
     const k = await showMenu([{k: 'trash', label: `${ids.length}件のノートをゴミ箱に移動`, danger: true}, {k: 'x', label: 'キャンセル'}]);
@@ -3401,6 +3444,75 @@ function dragHoverOpen(x, y){
     }
   }
 }
+
+/* ---------------- 並べ替え・表示 ---------------- */
+const SORTS = [
+  {k: 'updated-desc', label: '更新日（新しい順）'}, {k: 'updated-asc', label: '更新日（古い順）'},
+  {k: 'created-desc', label: '作成日（新しい順）'}, {k: 'created-asc', label: '作成日（古い順）'},
+  {k: 'title-asc', label: 'タイトル（あ→ん・A→Z）'}, {k: 'title-desc', label: 'タイトル（ん→あ・Z→A）'}];
+const VIEWS = [{k: 'detail', label: '詳細'}, {k: 'compact', label: 'コンパクト'}, {k: 'card', label: 'カード（画像付き）'}];
+const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+function getSort(){ const s = lsGet('nb.sort', 'updated-desc'); const [key, dir] = s.split('-'); return {s, key, dir}; }
+const listView = () => lsGet('nb.view', 'detail');
+const collator = new Intl.Collator('ja', {numeric: true, sensitivity: 'base'});
+function sortNotes(arr){
+  const {key, dir} = getSort(), k = dir === 'asc' ? 1 : -1;
+  if (key === 'title') return arr.sort((a, b) => k * collator.compare(a.title || '', b.title || '') || b.updated - a.updated);
+  return arr.sort((a, b) => k * ((a[key] || 0) - (b[key] || 0)));
+}
+$('#sortBtn').addEventListener('click', async () => {
+  const s = getSort().s, v = listView();
+  const k = await showMenu([...SORTS.map(x => ({k: 's:' + x.k, label: (x.k === s ? '✓ ' : '　') + '並べ替え：' + x.label})),
+    ...VIEWS.map(x => ({k: 'v:' + x.k, label: (x.k === v ? '✓ ' : '　') + '表示：' + x.label}))]);
+  if (!k) return;
+  if (k.startsWith('s:')) lsSet('nb.sort', k.slice(2)); else lsSet('nb.view', k.slice(2));
+  renderList();
+});
+let thumbObs = null;
+function observeThumbs(){
+  thumbObs?.disconnect();
+  thumbObs = new IntersectionObserver(async es => {
+    for (const e of es) {
+      if (!e.isIntersecting) continue;
+      const el = e.target; thumbObs.unobserve(el);
+      const id = el.dataset.thumb; let u = urlCache.get(id);
+      if (!u) { try { const b = await getAttBlob(id); if (b) { u = URL.createObjectURL(b); urlCache.set(id, u); } } catch {} }
+      if (u) el.style.backgroundImage = `url("${u}")`;
+    }
+  }, {root: $('#noteList'), rootMargin: '200px'});
+  $('#noteList').querySelectorAll('[data-thumb]').forEach(el => thumbObs.observe(el));
+}
+
+/* ---------------- 複製 ---------------- */
+async function duplicateNotes(ids){
+  await flushSave();
+  const made = [];
+  for (const id of ids) {
+    const n = S.notes.get(id); if (!n) continue;
+    const t = now();
+    const c = {...n, id: uid(), title: (n.title || '無題のノート') + '（コピー）', created: t, updated: t, deleted: false, archived: 0, pinned: 0,
+      tags: (n.tags || []).slice(), dirty: true, fileId: null, syncedAt: null, rev: 0, claude: 0, cdoc: null};
+    if (id === S.currentId) { c.body = editorHTML(); c.title = (titleEl.value || '無題のノート') + '（コピー）'; c.text = htmlToText(c.body); c.tags = (S.editTags || []).slice(); }
+    await storeNote(c); made.push(c);
+  }
+  renderAll(); scheduleSync();
+  return made;
+}
+addMoreItem({k: 'dup', label: '📄 ノートを複製', run: async n => { const [c] = await duplicateNotes([n.id]); if (c) { openNote(c.id); toast('複製しました'); } }, show: n => !n.deleted});
+
+/* ---------------- アーカイブ ---------------- */
+async function archiveNotes(ids, on){
+  await flushSave();
+  let c = 0;
+  for (const id of ids) { const n = S.notes.get(id); if (!n || n.deleted || !!n.archived === on) continue;
+    n.archived = on ? now() : 0; n.rev = now(); n.dirty = true; await storeNote(n); c++; }
+  if (on && S.currentId && ids.includes(S.currentId) && S.filter.type !== 'archive') { S.currentId = null; showEditor(false); if (isNarrow()) setView('list'); }
+  renderAll(); scheduleSync();
+  if (c) showBanner(on ? `${c}件をアーカイブしました` : `${c}件をアーカイブから戻しました`, '元に戻す', () => archiveNotes(ids, !on));
+}
+addMoreItem({k: 'arch', label: '🗄 アーカイブへ移動', run: n => archiveNotes([n.id], true), show: n => !n.deleted && !n.archived});
+addMoreItem({k: 'unarch', label: '🗄 アーカイブから戻す', run: n => archiveNotes([n.id], false), show: n => !n.deleted && n.archived});
 
 /* ---------------- boot ---------------- */
 (async () => {
