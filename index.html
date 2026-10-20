@@ -296,6 +296,10 @@ body.dragging-note,body.dragging-note *{cursor:grabbing!important;user-select:no
 #vertBody td,#vertBody th{border:1px solid rgba(128,128,128,.5);padding:3px 6px}
 #vertBody mark{background:#fff0a0;color:inherit}#vertBody .cmt{background:none}#vertBody a{color:inherit;text-decoration:none}
 #vertBody ul,#vertBody ol{margin:0 1em 0 0;padding:0 1.4em 0 0}
+#claudeBtn{font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mute);white-space:nowrap}
+#claudeBtn.on{background:#efe6fb;color:#6b3fb3;border-color:#d8c4f3}
+@media (prefers-color-scheme: dark){#claudeBtn.on{background:#3a2d52;color:#d9c6f7;border-color:#56437a}}
+.ni-claude{font-size:11px;color:#6b3fb3}
 #cmtPop{position:absolute;z-index:7;width:min(320px,calc(100% - 12px));background:var(--panel);border:1px solid var(--line);border-left:4px solid #d99a00;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px 12px;font-size:14px}
 #cmtPop[hidden]{display:none}
 #cmtPop .ct{white-space:pre-wrap;line-height:1.6;word-break:break-word}
@@ -399,6 +403,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button class="icon-btn mobile-only" id="backBtn" aria-label="戻る">‹</button>
         <select id="nbSelect" aria-label="ノートブック"></select>
         <span class="spacer"></span>
+        <button type="button" id="claudeBtn" title="Claudeと共有（Googleドキュメントの写しを作る）">Claude共有</button>
         <button type="button" id="countBtn" title="目次と文字数"></button>
         <span id="saveState" class="save-state"></span>
         <button class="icon-btn" id="cmtBtn" title="コメント一覧" aria-label="コメント一覧" hidden>💬<span class="badge" id="cmtCount"></span></button>
@@ -691,9 +696,10 @@ function normalizeNote(d){
     notebookId: d.notebookId || null, tags: Array.isArray(d.tags) ? d.tags.map(String) : [],
     created: Number(d.created) || now(), updated: Number(d.updated) || now(), deleted: !!d.deleted,
     pinned: Number(d.pinned) || 0, rev: Number(d.rev) || 0,
+    claude: Number(d.claude) || 0, cdoc: d.cdoc && d.cdoc.id ? {id: String(d.cdoc.id), ver: String(d.cdoc.ver || ''), h: String(d.cdoc.h || ''), at: Number(d.cdoc.at) || 0} : null,
   };
 }
-const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted, pinned:n.pinned || 0, rev:n.rev || 0});
+const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted, pinned:n.pinned || 0, rev:n.rev || 0, claude:n.claude || 0, cdoc:n.cdoc || null});
 // 同期で使う版番号（ピン留めなど、更新日時を変えない変更でも上がる）
 const revOf = n => Math.max(Number(n.rev) || 0, Number(n.updated) || 0);
 const activeNotebooks = () => S.notebooks.filter(n => !n.deleted).sort((a,b) => a.name.localeCompare(b.name, 'ja'));
@@ -851,6 +857,7 @@ async function sync({interactive = false} = {}){
     await processPendingTrash();
     await syncNotebooks(f);
     await syncNotes(f);
+    await syncClaudeDocs(f);
     S.lastSyncAt = now(); await db.put('kv', S.lastSyncAt, 'lastSync');
   } catch (e) {
     console.error(e);
@@ -881,7 +888,7 @@ async function syncNotebooks(f){
 }
 async function makeConflictCopy(local, remoteData){
   if (local.title === (remoteData.title || '') && local.body === sanitize(remoteData.body || '')) return;
-  const copy = {...local, id: uid(), title: (local.title || '無題') + '（競合コピー）', fileId: null, syncedAt: null, dirty: true, updated: now()};
+  const copy = {...local, id: uid(), title: (local.title || '無題') + '（競合コピー）', fileId: null, syncedAt: null, dirty: true, updated: now(), claude: 0, cdoc: null};
   await storeNote(copy);
   toast('別の端末と編集が重なったため「競合コピー」を作成しました');
 }
@@ -1063,6 +1070,7 @@ function loadIntoEditor(n){
   $('#deleteBtn').title = ro ? '完全に削除' : 'ゴミ箱へ';
   renderNbSelect(n); updateSaveState(n);
   deselectImage(); applyImgSizes(editorEl); hydrate(editorEl);
+  updateClaudeBtn(n);
   histInit(n); hideCmtPop(); updateCmtBtn(); updateCount(); markBrokenLinks(); renderBacklinks(n.id); hideLinkPop();
   if (!$('#findBar').hidden) runFind();
 }
@@ -1632,7 +1640,7 @@ function renderList(){
     return `<li class="note-item ${n.id === S.currentId && !S.selMode ? 'active' : ''} ${S.selected.has(n.id) ? 'checked' : ''}" data-id="${esc(n.id)}">
       <div class="ni-title">${n.pinned && !n.deleted ? `<span class="ni-pin" title="ピン留め中">${ICON_PIN_SM}</span> ` : ''}${esc(n.title || '無題のノート')}</div>
       <div class="ni-snip">${esc((n.text || '').slice(0, 120)) || '&nbsp;'}</div>
-      <div class="ni-meta"><span>${fmtTime(n.updated)}</span><span>${esc(notebookName(n.notebookId))}</span>${n.body.includes('<img') ? '<span>🖼</span>' : ''}${tags}${n.dirty ? '<span class="unsynced" title="未同期">●</span>' : ''}</div>
+      <div class="ni-meta">${n.claude && !n.deleted ? '<span class="ni-claude" title="Claudeと共有中">◆Claude</span>' : ''}<span>${fmtTime(n.updated)}</span><span>${esc(notebookName(n.notebookId))}</span>${n.body.includes('<img') ? '<span>🖼</span>' : ''}${tags}${n.dirty ? '<span class="unsynced" title="未同期">●</span>' : ''}</div>
     </li>`;
   }).join('');
 }
@@ -1661,9 +1669,10 @@ function renderSettings(){
   if (S.lastSyncAt) info.push('最終同期: ' + new Date(S.lastSyncAt).toLocaleString('ja-JP'));
   if (S.error) info.push('エラー: ' + S.error);
   info.push(`ノート ${[...S.notes.values()].filter(n => !n.deleted).length} 件`);
+  const cs = [...S.notes.values()].filter(n => n.claude && !n.deleted).length; if (cs) info.push(`Claude共有 ${cs} 件（ドライブの NoteBox/Claude共有）`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.20-2';
+const APP_VERSION = '2026.10.20-3';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2339,7 +2348,7 @@ function renderBulkBar(){
   const n = S.selected.size, trash = S.filter.type === 'trash' && !S.query;
   bar.innerHTML = `<span class="n">${n}件</span><button data-b="all">全選択</button>` + (n ? (trash
     ? `<button data-b="restore">復元</button><button data-b="purge" class="danger">完全に削除</button>`
-    : `<button data-b="move">移動</button><button data-b="tag">タグ</button><button data-b="pin">ピン</button><button data-b="trash" class="danger">ゴミ箱へ</button>`) : '')
+    : `<button data-b="move">移動</button><button data-b="tag">タグ</button><button data-b="pin">ピン</button><button data-b="claude">Claude共有</button><button data-b="trash" class="danger">ゴミ箱へ</button>`) : '')
     + `<span style="flex:1"></span><button data-b="done" class="done">完了</button>`;
 }
 async function chooseNotebook(title){
@@ -2384,6 +2393,10 @@ $('#bulkBar').addEventListener('click', async e => {
       for (const id of ids) { const n = S.notes.get(id); if (!n) continue; n.pinned = all ? 0 : (n.pinned || now()); n.rev = now(); n.dirty = true; await storeNote(n); }
       if (S.currentId) updatePinBtn(S.notes.get(S.currentId));
       renderAll(); scheduleSync(); toast(all ? 'ピン留めを外しました' : 'ピン留めしました'); setSelMode(false); break;
+    }
+    case 'claude': {
+      const all = ids.every(id => S.notes.get(id)?.claude);
+      await setClaudeShare(ids, !all); toast(all ? `${ids.length}件のClaude共有をオフにしました` : `${ids.length}件をClaudeと共有しました`); setSelMode(false); break;
     }
     case 'trash': if (confirm(`${ids.length}件をゴミ箱に移動しますか？`)) { await trashNotes(ids); setSelMode(false); } break;
     case 'restore':
@@ -3012,6 +3025,187 @@ document.addEventListener('pointerup', () => {
   signIn().then(() => { updateChip(); sync(); }).catch(() => {});        // 画面操作の直後なのでポップアップが許可される
 }, true);
 $('#autoReconn').addEventListener('change', e => { try { localStorage.setItem('nb.autoReconn', e.target.checked ? '1' : '0'); } catch {} });
+
+/* ---------------- Claude共有（Googleドキュメントの写し） ---------------- */
+const CDOC_MIME = 'application/vnd.google-apps.document';
+const CLAUDE_FOLDER = 'Claude共有';
+const textHash = s => { let x = 2166136261; for (const c of String(s).replace(/\s+/g, '')) { x ^= c.codePointAt(0); x = Math.imul(x, 16777619) >>> 0; } return x.toString(36); };
+function updateClaudeBtn(n){
+  const b = $('#claudeBtn'); const on = !!(n && n.claude);
+  b.classList.toggle('on', on); b.textContent = on ? '◆ Claude共有中' : 'Claude共有';
+  b.hidden = !!(n && n.deleted) || (n && n.notebookId === TPL_NB);
+}
+async function setClaudeShare(ids, on){
+  await flushSave();
+  for (const id of ids) { const n = S.notes.get(id); if (!n || n.deleted || !!n.claude === on) continue;
+    n.claude = on ? now() : 0; n.rev = now(); n.dirty = true; await storeNote(n); }
+  if (S.currentId) updateClaudeBtn(S.notes.get(S.currentId));
+  renderAll(); scheduleSync(800);
+}
+$('#claudeBtn').addEventListener('click', async () => {
+  const n = S.notes.get(S.currentId); if (!n) return;
+  if (!n.claude) {
+    await setClaudeShare([n.id], true);
+    toast(hasToken() ? 'Claude共有をオンにしました。ドライブの「NoteBox/Claude共有」に写しを作ります' : 'Claude共有をオンにしました（Googleに接続すると写しが作られます）');
+  } else {
+    const k = await showMenu([{k: 'off', label: 'Claude共有をオフにする（写しを削除）', danger: true}, {k: 'x', label: 'キャンセル'}]);
+    if (k === 'off') { await setClaudeShare([n.id], false); toast('Claude共有をオフにしました'); }
+  }
+});
+addMoreItem({k: 'claude', label: '◆ Claude共有のオン／オフ', run: n => $('#claudeBtn').click(), show: n => !n.deleted && n.notebookId !== TPL_NB});
+
+// ノート → ドキュメント用HTML
+function noteToDocHtml(n){
+  const doc = new DOMParser().parseFromString(`<body>${n.body}</body>`, 'text/html');
+  doc.querySelectorAll('img[data-att]').forEach(i => i.replaceWith(`【画像：${i.getAttribute('alt') || ''}】`));
+  doc.querySelectorAll('img').forEach(i => i.replaceWith(`【画像】`));
+  doc.querySelectorAll('a.att').forEach(a => a.replaceWith(`【添付：${a.dataset.name || ''}】`));
+  doc.querySelectorAll('a.nlink').forEach(a => { const t = S.notes.get(a.dataset.note); a.replaceWith(`【リンク：${t ? t.title : a.textContent}】`); });
+  doc.querySelectorAll('span.cmt').forEach(s => { const seen = s.previousElementSibling?.dataset?.cid === s.dataset.cid; if (!s.nextElementSibling || s.nextElementSibling.dataset?.cid !== s.dataset.cid) s.after(`〔コメント：${s.dataset.c || ''}〕`); s.replaceWith(...s.childNodes); });
+  const HLC = {'': '#fff0a0', 'hl-g': '#c6ecd4', 'hl-p': '#ffd3e1'};
+  doc.querySelectorAll('mark').forEach(m => { const s = doc.createElement('span'); s.style.backgroundColor = HLC[m.className] || '#fff0a0'; s.append(...m.childNodes); m.replaceWith(s); });
+  doc.querySelectorAll('table').forEach(t => { t.setAttribute('style', 'border-collapse:collapse'); t.setAttribute('border', '1'); });
+  doc.querySelectorAll('td,th').forEach(c => {
+    let st = 'border:1px solid #999;padding:4px 8px;vertical-align:top;';
+    if (c.classList.contains('cell-dark')) st += 'background-color:#2f7a63;color:#ffffff;';
+    else if (c.classList.contains('cell-light')) st += 'background-color:#dcefe6;';
+    c.setAttribute('style', st); c.removeAttribute('class');
+  });
+  doc.querySelectorAll('ul.check > li').forEach(li => li.prepend(li.classList.contains('done') ? '☑ ' : '☐ '));
+  doc.querySelectorAll('[class]').forEach(e => e.removeAttribute('class'));
+  doc.querySelectorAll('[contenteditable],[data-cid],[data-c],[data-ct],[data-note],[data-att],[data-name],[data-w]').forEach(e => { for (const a of ['contenteditable','data-cid','data-c','data-ct','data-note','data-att','data-name','data-w']) e.removeAttribute(a); });
+  const nb = n.notebookId && nbById(n.notebookId) ? nbPath(n.notebookId) : '未分類';
+  const info = `NoteBox｜ノートブック：${nb}${(n.tags || []).length ? '｜タグ：' + n.tags.map(t => '#' + t).join(' ') : ''}`;
+  return `<html><head><meta charset="utf-8"></head><body><p style="color:#888888;font-size:9pt">${esc(info)}</p>${doc.body.innerHTML}</body></html>`;
+}
+
+// Googleドキュメントの書き出しHTML → ノート本文
+function docsHtmlToNoteBody(html, src){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const rules = new Map();
+  doc.querySelectorAll('style').forEach(st => { for (const m of st.textContent.matchAll(/\.([\w-]+)\s*\{([^}]*)\}/g)) rules.set(m[1], (rules.get(m[1]) || '') + ';' + m[2]); });
+  const styleOf = el => [...el.classList].map(c => rules.get(c) || '').join(';') + ';' + (el.getAttribute('style') || '');
+  const prop = (s, name) => { const m = s.match(new RegExp('(?:^|;)\\s*' + name + '\\s*:\\s*([^;]+)', 'gi')); return m ? m[m.length - 1].split(':').slice(1).join(':').trim() : ''; };
+  const rgb = c => { const d = document.createElement('i'); d.style.color = c; document.body.appendChild(d); const v = getComputedStyle(d).color; d.remove(); const m = v.match(/\d+(\.\d+)?/g); return m ? m.slice(0, 3).map(Number) : null; };
+  const isBlank = c => !c || /transparent|inherit|initial|none/i.test(c) || (() => { const v = rgb(c); return !v || (v[0] > 245 && v[1] > 245 && v[2] > 245); })();
+  const lum = c => { const v = rgb(c); return v ? (0.299 * v[0] + 0.587 * v[1] + 0.114 * v[2]) / 255 : 1; };
+  // 見出し以外の装飾
+  doc.body.querySelectorAll('span').forEach(sp => {
+    const s = styleOf(sp); let inner = [...sp.childNodes]; const wrap = tag => { const w = doc.createElement(tag); w.append(...inner); inner = [w]; return w; };
+    const fw = prop(s, 'font-weight'); if (!sp.closest('h1,h2,h3,h4,h5,h6') && (fw === 'bold' || Number(fw) >= 600)) wrap('b');
+    if (prop(s, 'font-style') === 'italic') wrap('i');
+    if (/line-through/.test(prop(s, 'text-decoration'))) wrap('s');
+    const bg = prop(s, 'background-color');
+    if (!isBlank(bg)) { const v = rgb(bg) || [255, 240, 160]; const m = wrap('mark'); if (v[1] > v[0] + 20 && v[1] > v[2]) m.className = 'hl-g'; else if (v[0] > v[1] + 30 && v[2] > v[1]) m.className = 'hl-p'; }
+    sp.replaceWith(...inner);
+  });
+  doc.body.querySelectorAll('td,th').forEach(c => {
+    const bg = prop(styleOf(c), 'background-color'); c.removeAttribute('class'); c.removeAttribute('style');
+    if (!isBlank(bg)) c.className = lum(bg) < 0.55 ? 'cell-dark' : 'cell-light';
+  });
+  doc.body.querySelectorAll('a[href]').forEach(a => {   // Googleのリダイレクトを外す
+    try { const u = new URL(a.href); if (u.hostname.endsWith('google.com') && u.pathname === '/url' && u.searchParams.get('q')) a.setAttribute('href', u.searchParams.get('q')); } catch {}
+  });
+  doc.body.querySelectorAll('h5,h6').forEach(x => { const h4 = doc.createElement('h4'); h4.append(...x.childNodes); x.replaceWith(h4); });
+  doc.body.querySelectorAll('p.title,p.subtitle').forEach(x => { const h = doc.createElement(x.classList.contains('title') ? 'h1' : 'h2'); h.append(...x.childNodes); x.replaceWith(h); });
+  // ☐/☑ で始まるリストはチェックリストに
+  doc.body.querySelectorAll('ul').forEach(ul => {
+    const lis = [...ul.children].filter(x => x.tagName === 'LI'); if (!lis.length || !lis.every(li => /^\s*[☐☑]/.test(li.textContent))) return;
+    ul.className = 'check';
+    lis.forEach(li => { const done = /^\s*☑/.test(li.textContent); const w = doc.createTreeWalker(li, NodeFilter.SHOW_TEXT); let t; while ((t = w.nextNode())) { if (/[☐☑]/.test(t.data)) { t.data = t.data.replace(/^\s*[☐☑]\s?/, ''); break; } } if (done) li.className = 'done'; });
+  });
+  // 先頭の「NoteBox｜…」の行は除く
+  const first = [...doc.body.children].find(x => x.textContent.trim());
+  if (first && first.textContent.trim().startsWith('NoteBox｜')) first.remove();
+  // 画像・添付・リンクの目印を元に戻す
+  const atts = new Map(), files = new Map();
+  if (src) {
+    const sd = new DOMParser().parseFromString(`<body>${src.body}</body>`, 'text/html');
+    sd.querySelectorAll('img[data-att]').forEach(i => atts.set(i.getAttribute('alt') || '', i.outerHTML));
+    sd.querySelectorAll('a.att').forEach(a => files.set(a.dataset.name || '', a.outerHTML));
+  }
+  const byTitle = new Map([...S.notes.values()].filter(n => !n.deleted).map(n => [n.title, n.id]));
+  let out = doc.body.innerHTML.replace(/<p[^>]*>\s*<\/p>/g, '<p><br></p>');
+  out = out.replace(/【画像：([^】]*)】/g, (m, name) => atts.get(htmlDecode(name)) || m)
+    .replace(/【添付：([^】]*)】/g, (m, name) => files.get(htmlDecode(name)) || m)
+    .replace(/【リンク：([^】]*)】/g, (m, t) => { const id = byTitle.get(htmlDecode(t)); return id ? `<a class="nlink" data-note="${esc(id)}" contenteditable="false">${t}</a>` : m; })
+    .replace(/〔コメント：([^〕]*)〕/g, (m, c) => `<span class="cmt" data-cid="c${uid().slice(0, 8)}" data-c="${esc(htmlDecode(c))}" data-ct="${now()}">※</span>`);
+  return sanitize(out).replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
+}
+function htmlDecode(s){ const t = document.createElement('textarea'); t.innerHTML = s; return t.value; }
+
+async function claudeFolder(f){
+  if (f.claude) return f.claude;
+  f.claude = await findOrCreateFolder(CLAUDE_FOLDER, f.root);
+  await db.put('kv', f, 'folders'); return f.claude;
+}
+async function uploadDoc({fileId, name, html, parent, noteId}){
+  const meta = fileId ? {name} : {name, parents: [parent], mimeType: CDOC_MIME, appProperties: {kind: 'cdoc', noteId}};
+  const b = 'nb' + uid().replace(/-/g, '');
+  const body = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n`, html, `\r\n--${b}--`]);
+  const url = fileId ? `${UPLOAD}/files/${fileId}?uploadType=multipart&fields=id,version` : `${UPLOAD}/files?uploadType=multipart&fields=id,version`;
+  return gjson(url, {method: fileId ? 'PATCH' : 'POST', headers: {'Content-Type': `multipart/related; boundary=${b}`}, body});
+}
+const exportDoc = id => gfetch(`${API}/files/${id}/export?mimeType=text/html`).then(r => r.text());
+const docPlain = html => { const d = new DOMParser().parseFromString(html, 'text/html'); d.querySelectorAll('style,script').forEach(x => x.remove()); return d.body.textContent || ''; };
+async function pushDoc(n, folder){
+  const html = noteToDocHtml(n), name = n.title || '無題のノート';
+  let id = n.cdoc?.id;
+  if (!id) {   // 別の端末がすでに作っていないか確認
+    const q = `'${folder}' in parents and trashed=false and appProperties has { key='noteId' and value='${n.id}' }`;
+    const r = await gjson(`${API}/files?q=${encodeURIComponent(q)}&fields=files(id)`);
+    id = r.files?.[0]?.id || null;
+  }
+  const r = await uploadDoc({fileId: id, name, html, parent: folder, noteId: n.id});
+  const exported = await exportDoc(r.id).catch(() => '');
+  const meta = await gjson(`${API}/files/${r.id}?fields=version`).catch(() => r);
+  return {id: r.id, ver: String(meta.version || r.version || ''), h: textHash(docPlain(exported)), at: revOf(n)};
+}
+async function importClaudeEdit(n, html, ver){
+  const id = 'cr-' + textHash(n.cdoc.id + '|' + ver);
+  if (S.notes.has(id)) return null;
+  const body = docsHtmlToNoteBody(html, n), t = now();
+  const c = {id, title: (n.title || '無題のノート') + '（Claude修正版）', body, text: htmlToText(body), notebookId: n.notebookId || null,
+    tags: [...new Set([...(n.tags || []), 'Claude修正版'])], created: t, updated: t, deleted: false, dirty: true, fileId: null, syncedAt: null, claude: 0, cdoc: null};
+  await storeNote(c); return c;
+}
+async function syncClaudeDocs(f){
+  const shared = [...S.notes.values()].filter(n => n.claude && !n.deleted && n.notebookId !== TPL_NB);
+  const stale = [...S.notes.values()].filter(n => n.cdoc?.id && (!n.claude || n.deleted));
+  if (!shared.length && !stale.length) return;
+  const folder = await claudeFolder(f);
+  const made = [];
+  for (const n of shared) {
+    try {
+      if (n.cdoc?.id) {
+        let info;
+        try { info = await gjson(`${API}/files/${n.cdoc.id}?fields=version,trashed`); } catch (e) { if (e.status === 404) info = {trashed: true}; else throw e; }
+        if (info.trashed) n.cdoc = null;
+        else if (String(info.version) !== n.cdoc.ver) {
+          const html = await exportDoc(n.cdoc.id);
+          if (textHash(docPlain(html)) !== n.cdoc.h) { const c = await importClaudeEdit(n, html, String(info.version)); if (c) made.push(c); }
+          if (revOf(n) === n.cdoc.at) {   // 写しはノートの内容に戻す（修正内容は新しいノートに保存済み）
+            n.cdoc = await pushDoc(n, folder); n.rev = Math.max(now(), revOf(n) + 1); n.cdoc.at = revOf(n); n.dirty = true; await storeNote(n); continue;
+          }
+        }
+      }
+      if (!n.cdoc || n.cdoc.at !== revOf(n)) {
+        const rv = Math.max(now(), revOf(n) + 1);
+        n.rev = rv; n.cdoc = await pushDoc(n, folder); n.cdoc.at = rv; n.dirty = true; await storeNote(n);
+      }
+    } catch (e) { if (e.auth) throw e; console.warn('Claude共有', n.title, e); }
+  }
+  for (const n of stale) {
+    try { await gfetch(`${API}/files/${n.cdoc.id}?fields=id`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({trashed: true})}); }
+    catch (e) { if (e.auth) throw e; if (e.status !== 404) continue; }
+    n.cdoc = null; n.rev = now(); n.dirty = true; await storeNote(n);
+  }
+  if ([...S.notes.values()].some(n => n.dirty)) await syncNotes(f);   // 写しの情報もノートに保存
+  if (made.length) {
+    renderAll();
+    showBanner(made.length === 1 ? `Claudeの修正を「${made[0].title}」として保存しました` : `Claudeの修正を${made.length}件のノートとして保存しました`, '開く', () => openNote(made[0].id));
+  }
+}
 
 /* ---------------- boot ---------------- */
 (async () => {
