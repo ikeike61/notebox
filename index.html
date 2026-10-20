@@ -3233,7 +3233,8 @@ function mdToHtml(md){
       .replace(/~~([^~]+)~~/g, '<s>$1</s>')
       .replace(/==([^=]+)==/g, '<mark>$1</mark>')
       .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>')
-      .replace(/ {2}$/, '<br>').replace(/&lt;br\s*\/?&gt;/g, '<br>');
+      .replace(/ {2}$/, '<br>').replace(/&lt;br\s*\/?&gt;/g, '<br>')
+      .replace(/&lt;mark class=&quot;(hl-g|hl-p)&quot;&gt;(.*?)&lt;\/mark&gt;/g, '<mark class="$1">$2</mark>');
     return s.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${esc(codes[i])}</code>`);
   };
   const L = md.split('\n'), out = []; let i = 0, blanks = 0;
