@@ -41,8 +41,13 @@ body[data-solo] #sidebar,body[data-solo] #listPane,body[data-solo] .split,body[d
 body[data-solo] #app{grid-template-columns:minmax(0,1fr)!important}
 body[data-solo] #editorPane{display:flex!important}
 body[data-solo] .ed-body{max-width:980px;width:100%;margin:0 auto}
-.solo-tag{font-size:11px;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:2px 8px;white-space:nowrap;display:none}
-body[data-solo] .solo-tag{display:inline-block}
+#soloBar{display:none;align-items:center;gap:8px;padding:6px 10px;padding-top:calc(6px + env(safe-area-inset-top));background:var(--side);color:var(--side-fg);font-size:13px;flex:none}
+body[data-solo] #soloBar{display:flex}
+body[data-solo] .ed-head{padding-top:10px}
+#soloBar button{height:34px;padding:0 12px;border-radius:8px;font-size:13.5px;color:var(--side-fg);border:1px solid rgba(255,255,255,.18);white-space:nowrap}
+#soloBar button:hover{background:var(--side-hi)}
+#soloBar #soloClose{font-weight:600}
+#soloBar .st{color:var(--side-mute);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 #pinBtn{color:var(--mute)}#pinBtn.on{color:var(--accent)}#pinBtn.on svg{fill:currentColor}
 .pin-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border-radius:8px;text-align:left;color:var(--side-fg);font-size:14px}
 .pin-item:hover{background:var(--side-hi)}
@@ -464,12 +469,12 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
 
   <div class="split" data-split="lw" title="ドラッグで幅を変更（ダブルクリックで元に戻す）"></div>
   <main id="editorPane">
+    <div id="soloBar"><button type="button" id="soloClose">✕ 閉じる</button><span class="st" id="soloText">別ウィンドウで表示中</span><button type="button" id="soloMain">メイン画面で開く</button></div>
     <div id="emptyEditor" class="empty">ノートを選ぶか、新しく作成してください</div>
     <div id="editorWrap" hidden>
       <header class="ed-head">
         <button class="icon-btn" id="fullBtn" aria-label="大きくする" title="大きくする"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
         <button class="icon-btn" id="winBtn" aria-label="別のウィンドウで開く" title="別のウィンドウで開く"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="14" height="14" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v11"/></svg></button>
-        <span class="solo-tag">別ウィンドウ</span>
         <button class="icon-btn mobile-only" id="backBtn" aria-label="戻る">‹</button>
         <select id="nbSelect" aria-label="ノートブック"></select>
         <span class="spacer"></span>
@@ -1811,7 +1816,7 @@ function renderSettings(){
   const cs = [...S.notes.values()].filter(n => n.claude && !n.deleted).length; if (cs) info.push(`Claude共有 ${cs} 件（ドライブの NoteBox/Claude共有）`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.20-6';
+const APP_VERSION = '2026.10.20-7';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -3703,6 +3708,23 @@ $('#slashPop').addEventListener('click', e => { const it = e.target.closest('.it
 document.addEventListener('pointerdown', e => { if (SP.open && !e.target.closest('#slashPop')) hideSlash(); }, true);
 
 /* ---------------- 別ウィンドウで開く ---------------- */
+const mainUrl = id => location.pathname + (id ? '?note=' + encodeURIComponent(id) : '');
+// 別ウィンドウを閉じる。閉じられない環境（同じ画面で開いた場合など）ではメイン画面に戻る
+async function closeSolo(toMain){
+  await flushSave(); bcPost({t: 'sync'});
+  const id = S.currentId || SOLO;
+  if (toMain) bcPost({t: 'open', id});
+  const hasMain = !!(window.opener && !window.opener.closed);
+  if (toMain && hasMain) { try { window.opener.focus(); } catch {} }
+  if (!toMain || hasMain) {
+    try { window.close(); } catch {}
+    await new Promise(r => setTimeout(r, 300));
+    if (window.closed) return;
+  }
+  location.replace(mainUrl(toMain || !hasMain ? id : null));
+}
+$('#soloClose').addEventListener('click', () => closeSolo(false));
+$('#soloMain').addEventListener('click', () => closeSolo(true));
 function openInWindow(id){
   flushSave();
   const url = location.pathname + '?solo=1&note=' + encodeURIComponent(id);
@@ -3733,6 +3755,7 @@ if (BC) BC.onmessage = async ({data: m}) => {
     S.notebooks = (await db.get('kv', 'notebooks')) || S.notebooks; bcRender();
     if (S.currentId) renderNbSelect(S.notes.get(S.currentId));
   } else if (m.t === 'sync' && !SOLO) scheduleSync(1500);
+  else if (m.t === 'open' && !SOLO && m.id && S.notes.has(m.id)) { closeDrawer(); if (S.notes.get(m.id).archived) S.filter = {type: 'archive', value: ''}; openNote(m.id); try { window.focus(); } catch {} }
 };
 
 /* ---------------- 構成ボード ---------------- */
@@ -3898,7 +3921,11 @@ addMoreItem({k: 'board', label: '📇 構成ボード（見出しをカードで
     return;
   }
   const clipped = await handleIncomingClip();
-  if (!clipped && !isNarrow()) { const first = visibleNotes()[0]; if (first) openNote(first.id, {push: false}); }
+  const want = QS.get('note');
+  if (!clipped && want) {   // 別ウィンドウから戻ったとき：そのノートを開く
+    history.replaceState(null, '', location.pathname);
+    if (S.notes.has(want)) { await openNote(want, {push: false}); }
+  } else if (!clipped && !isNarrow()) { const first = visibleNotes()[0]; if (first) openNote(first.id, {push: false}); }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.storage?.persist?.().catch(() => {});
   if (navigator.onLine && clientId()) loadGis().catch(() => {});
