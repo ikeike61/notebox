@@ -75,6 +75,19 @@ body[data-full] .ed-body{max-width:960px;width:100%;margin:0 auto}
 .nav-sec{display:flex;align-items:center;justify-content:space-between;color:var(--side-mute);font-size:11px;letter-spacing:.08em;padding:16px 10px 4px}
 .nav-sec .mini{color:var(--side-mute);font-size:16px;line-height:1;padding:2px 6px;border-radius:5px}
 .nav-sec .mini:hover{background:var(--side-hi);color:var(--side-fg)}
+.nav-sec.acc{padding:12px 4px 2px 2px}
+.sec-t{display:flex;align-items:center;gap:6px;flex:1;min-width:0;padding:5px 8px;border-radius:7px;color:var(--side-mute);font-size:11px;letter-spacing:.08em;text-align:left}
+.sec-t:hover{background:var(--side-hi);color:var(--side-fg)}
+.sec-t .car{display:inline-block;width:10px;font-size:9px;transition:transform .15s}
+.nav-sec.closed .sec-t .car{transform:rotate(-90deg)}
+.sec-t .sc{margin-left:auto;font-size:11px;letter-spacing:0;opacity:.8}
+.nav-sec.closed.has-active .sec-t{color:var(--side-fg);box-shadow:inset 3px 0 0 var(--accent)}
+.nav-sec.closed.has-active .sec-t::after{content:"選択中";font-size:10px;letter-spacing:0;color:var(--accent);margin-left:6px;order:3}
+.nav-sec.drop-open .sec-t{background:var(--side-hi);color:var(--side-fg)}
+.brand{justify-content:space-between}
+.brand .bl{display:flex;align-items:center;gap:10px}
+#accAll{font-size:11px;font-weight:500;color:var(--side-mute);padding:4px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.12);white-space:nowrap}
+#accAll:hover{background:var(--side-hi);color:var(--side-fg)}
 .side-foot{border-top:1px solid rgba(255,255,255,.08);padding-top:10px;display:flex;flex-direction:column;gap:4px}
 .sync-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;color:var(--side-fg);font-size:13px;text-align:left}
 .sync-chip:hover,.side-link:hover{background:var(--side-hi)}
@@ -370,7 +383,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 <body data-view="list">
 <div id="app">
   <aside id="sidebar">
-    <div class="brand"><img src="icon.svg" alt=""><span>NoteBox</span></div>
+    <div class="brand"><span class="bl"><img src="icon.svg" alt=""><span>NoteBox</span></span><button type="button" id="accAll" title="ノートブックとタグの一覧をまとめて開閉"></button></div>
     <button id="newNoteSide" class="new-btn">＋ 新しいノート</button>
     <nav id="nav"></nav>
     <div class="side-foot">
@@ -1512,6 +1525,23 @@ async function newNote(tpl){
   await Promise.all([opening, db.put('notes', n)]);
 }
 async function saveNotebooks(){ await db.put('kv', S.notebooks, 'notebooks'); scheduleSync(2000); }
+const SEC_KEYS = ['pin', 'nb', 'tag'];
+function getSecs(){ try { return JSON.parse(localStorage.getItem('nb.secs') || '{}') || {}; } catch { return {}; } }
+function setSecs(s){ try { localStorage.setItem('nb.secs', JSON.stringify(s)); } catch {} }
+function toggleSec(key, open){ const s = getSecs(); s[key] = open === undefined ? !s[key] : !open; setSecs(s); renderNav(); }
+function setCollapsedSet(set){ try { localStorage.setItem('nb.collapsed', JSON.stringify([...set])); } catch {} }
+// 開いているものが1つでもあれば「すべて閉じる」、全部閉じていれば「すべて開く」
+function allClosed(){
+  const s = getSecs(), c = getCollapsed();
+  const parents = activeNotebooks().filter(b => nbChildren(b.id).length);
+  return SEC_KEYS.every(k => s[k]) && parents.every(b => c.has(b.id));
+}
+function updateAccAll(){ const b = $('#accAll'); if (!b) return; const closed = allClosed(); b.textContent = closed ? '⊞ すべて開く' : '⊟ すべて閉じる'; b.setAttribute('aria-label', b.textContent.slice(2)); }
+function setAll(open){
+  setSecs(Object.fromEntries(SEC_KEYS.map(k => [k, !open])));
+  setCollapsedSet(open ? new Set() : new Set(activeNotebooks().filter(b => nbChildren(b.id).length).map(b => b.id)));
+  renderNav();
+}
 function getCollapsed(){ try { return new Set(JSON.parse(localStorage.getItem('nb.collapsed') || '[]')); } catch { return new Set(); } }
 function toggleCollapsed(id){ const c = getCollapsed(); c.has(id) ? c.delete(id) : c.add(id); try { localStorage.setItem('nb.collapsed', JSON.stringify([...c])); } catch {} renderNav(); }
 async function setNbParent(id, parentId){
@@ -1580,15 +1610,20 @@ function renderNav(){
   const item = (type, value, label, count, extra = '') =>
     `<button class="nav-item ${!S.query && f.type === type && f.value === value ? 'active' : ''}" data-type="${type}" data-value="${esc(value)}"><span class="lbl">${esc(label)}</span>${extra}<span class="cnt">${count}</span></button>`;
   let h = '';
+  const secs = getSecs();
+  const head = (key, label, count, active, extra = '', attrs = '') =>
+    `<div class="nav-sec acc ${secs[key] ? 'closed' : ''} ${active ? 'has-active' : ''}" data-sec="${key}" ${attrs}><button type="button" class="sec-t" data-sectoggle="${key}" aria-expanded="${!secs[key]}"><span class="car">▼</span><span>${label}</span><span class="sc">${count}</span></button>${extra}</div>`;
   const pins = live.filter(n => n.pinned).sort((a, b) => a.pinned - b.pinned);
   if (pins.length) {
-    h += `<div class="nav-sec" style="padding-top:2px"><span>ピン留め</span></div>`;
-    for (const n of pins) h += `<button class="pin-item ${n.id === S.currentId ? 'active' : ''}" data-pin="${esc(n.id)}">${ICON_PIN_SM}<span>${esc(n.title || '無題のノート')}</span></button>`;
-    h += `<div style="height:8px"></div>`;
+    h += head('pin', 'ピン留め', pins.length, pins.some(n => n.id === S.currentId));
+    if (!secs.pin) for (const n of pins) h += `<button class="pin-item ${n.id === S.currentId ? 'active' : ''}" data-pin="${esc(n.id)}">${ICON_PIN_SM}<span>${esc(n.title || '無題のノート')}</span></button>`;
+    h += `<div style="height:6px"></div>`;
   }
   h += item('all', '', '📒 すべてのノート', live.filter(n => n.notebookId !== TPL_NB).length);
-  h += `<div class="nav-sec" data-nbroot="1"><span>ノートブック</span><button class="mini" id="addNb" aria-label="ノートブックを追加">＋</button></div>`;
+  const nbActive = !S.query && f.type === 'nb';
+  h += head('nb', 'ノートブック', activeNotebooks().length, nbActive, `<button class="mini" id="addNb" aria-label="ノートブックを追加">＋</button>`, 'data-nbroot="1"');
   const collapsed = getCollapsed();
+  if (!secs.nb) {
   const counts = new Map(); for (const n of live) { const k = nbOf(n); counts.set(k, (counts.get(k) || 0) + 1); }
   const countDeep = id => [id, ...nbDescendants(id)].reduce((s, x) => s + (counts.get(x) || 0), 0);
   const hidden = new Set(); for (const id of collapsed) for (const d of nbDescendants(id)) hidden.add(d);
@@ -1601,14 +1636,16 @@ function renderNav(){
   }
   const unc = live.filter(n => !nbOf(n)).length;
   h += item('nb', '', '未分類', unc).replace('<span class="lbl">', '<span class="tw"></span><span class="lbl">').replace('<button class="nav-item', '<button style="padding-left:6px" class="nav-item');
+  }
   const tags = new Map();
   for (const n of live) for (const t of n.tags || []) tags.set(t, (tags.get(t) || 0) + 1);
   if (tags.size) {
-    h += `<div class="nav-sec"><span>タグ</span></div>`;
-    for (const [t, c] of [...tags].sort((a,b) => a[0].localeCompare(b[0], 'ja'))) h += item('tag', t, '# ' + t, c).replace('<span class="lbl">', `<span class="tdot" style="--h:${tagHue(t)}"></span><span class="lbl">`);
+    h += head('tag', 'タグ', tags.size, !S.query && f.type === 'tag');
+    if (!secs.tag) for (const [t, c] of [...tags].sort((a,b) => a[0].localeCompare(b[0], 'ja'))) h += item('tag', t, '# ' + t, c).replace('<span class="lbl">', `<span class="tdot" style="--h:${tagHue(t)}"></span><span class="lbl">`);
   }
   h += `<div class="nav-sec"><span></span></div>` + item('trash', '', '🗑 ゴミ箱', S.notes.size - live.length);
   $('#nav').innerHTML = h;
+  updateAccAll();
 }
 function visibleNotes(){
   let arr = [...S.notes.values()];
@@ -1680,7 +1717,7 @@ function renderSettings(){
   const cs = [...S.notes.values()].filter(n => n.claude && !n.deleted).length; if (cs) info.push(`Claude共有 ${cs} 件（ドライブの NoteBox/Claude共有）`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.20-4';
+const APP_VERSION = '2026.10.20-5';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -1697,6 +1734,8 @@ $('#nav').addEventListener('click', async e => {
   const pin = e.target.closest('[data-pin]');
   if (pin) { closeDrawer(); openNote(pin.dataset.pin); return; }
   if (S.suppressClick) return;
+  const st = e.target.closest('[data-sectoggle]');
+  if (st) { toggleSec(st.dataset.sectoggle); return; }
   if (e.target.closest('#addNb')) { addNotebook(); return; }
   const tw = e.target.closest('[data-twist]');
   if (tw && tw.textContent) { e.stopPropagation(); toggleCollapsed(tw.dataset.twist); return; }
@@ -2442,12 +2481,14 @@ function startDrag(){
 }
 function moveDrag(x, y){
   const g = $('#dragGhost'); g.style.left = x + 'px'; g.style.top = y + 'px';
+  dragHoverOpen(x, y);
   const t = dragTargetAt(x, y);
   if (DRAG.hi !== t) { DRAG.hi?.classList.remove('drop-hi'); t?.classList.add('drop-hi'); DRAG.hi = t; }
   const nav = $('#nav'), r = nav.getBoundingClientRect();   // 端に来たら左列をスクロール
   if (x >= r.left && x <= r.right) { if (y < r.top + 40) nav.scrollTop -= 12; else if (y > r.bottom - 40) nav.scrollTop += 12; }
 }
 async function endDrag(cancel){
+  clearTimeout(accHover.t); accHover.el?.classList?.remove('drop-open'); accHover.el = null;
   const t = DRAG.hi; DRAG.hi?.classList.remove('drop-hi'); DRAG.hi = null;
   document.body.classList.remove('dragging-note'); $('#dragGhost').hidden = true;
   document.querySelectorAll('.note-item.dragging').forEach(x => x.classList.remove('dragging'));
@@ -3337,6 +3378,29 @@ $('#pasteForm').addEventListener('submit', async e => {
     const msg = await applyPatch(pkg); $('#importInfo').textContent = msg; toast(msg);
   } catch (err) { toast('取り込めませんでした：' + err.message); }
 });
+
+/* ---------------- 左メニューのアコーディオン ---------------- */
+$('#accAll').addEventListener('click', () => setAll(allClosed()));
+// ドラッグ中、閉じた見出しや折りたたんだノートブックの上に少し留まると開く
+let accHover = {el: null, t: 0};
+function dragHoverOpen(x, y){
+  const el = document.elementFromPoint(x, y);
+  const sec = el?.closest('.nav-sec.closed[data-sec]');
+  const nbBtn = el?.closest('#nav .nav-item[data-type="nb"]');
+  const twisty = nbBtn && getCollapsed().has(nbBtn.dataset.value) ? nbBtn : null;
+  const target = sec || twisty;
+  if (target !== accHover.el) {
+    clearTimeout(accHover.t); accHover.el?.classList?.remove('drop-open'); accHover.el = target;
+    if (target) {
+      target.classList.add('drop-open');
+      accHover.t = setTimeout(() => {
+        if (sec) toggleSec(sec.dataset.sec, true);
+        else { const c = getCollapsed(); c.delete(twisty.dataset.value); setCollapsedSet(c); renderNav(); }
+        accHover.el = null;
+      }, 650);
+    }
+  }
+}
 
 /* ---------------- boot ---------------- */
 (async () => {
