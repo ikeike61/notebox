@@ -1050,6 +1050,15 @@ async function makeConflictCopy(local, remoteData){
   await storeNote(copy);
   toast('別の端末と編集が重なったため「競合コピー」を作成しました');
 }
+function setProgress(label, i, n){ S.progress = n > 1 ? `${label} ${i}/${n}` : ''; updateChip(); }
+const needsDownload = r => { const p = r.appProperties || {}; const l = S.notes.get(p.noteId); return !!p.noteId && !(l && l.syncedAt === (Number(p.updated) || 0)); };
+async function applyRemoteNotes(list){   // 受信が必要なものは件数を表示しながら
+  const todo = list.filter(needsDownload);
+  for (const r of list) if (!todo.includes(r)) await applyRemoteNote(r);
+  let i = 0;
+  for (const r of todo) { setProgress('受信', ++i, todo.length); await applyRemoteNote(r); }
+  S.progress = '';
+}
 async function applyRemoteNote(r){
   const p = r.appProperties || {}; const id = p.noteId;
   if (!id) return;
@@ -1068,16 +1077,17 @@ async function dropGoneNote(l){   // 別の端末で削除された
 }
 async function syncNotes(f, inc){
   if (inc) {   // 変更分だけ
-    for (const r of inc.notes) await applyRemoteNote(r);
+    await applyRemoteNotes(inc.notes);
     if (inc.gone.size) for (const l of [...S.notes.values()]) if (l.fileId && inc.gone.has(l.fileId)) await dropGoneNote(l);
   } else {
     const remote = await listFolder(f.root, 'note');
-    const seen = new Set();
+    const seen = new Set(), uniq = [];
     for (const r of remote){
       const id = r.appProperties?.noteId;
       if (!id || seen.has(id)) continue;
-      seen.add(id); await applyRemoteNote(r);
+      seen.add(id); uniq.push(r);
     }
+    await applyRemoteNotes(uniq);
     for (const l of [...S.notes.values()]){
       if (!l.fileId || seen.has(l.id)) continue;
       if (await isGone(l.fileId)) await dropGoneNote(l);
@@ -1087,9 +1097,10 @@ async function syncNotes(f, inc){
 }
 async function uploadDirtyNotes(f){
   const pendingAtt = new Set(((await db.get('kv', 'pendingAtt')) || []).map(a => a.id));
-  for (const l of [...S.notes.values()]){
-    if (!l.dirty) continue;
-    if ([...pendingAtt].some(a => l.body.includes(a))) continue; // 添付のアップロード待ち
+  const todo = [...S.notes.values()].filter(l => l.dirty && ![...pendingAtt].some(a => l.body.includes(a)));   // 添付のアップロード待ちは後回し
+  let i = 0;
+  for (const l of todo){
+    setProgress('送信', ++i, todo.length);
     const snap = serialize(l);
     const fid = await uploadFile({fileId: l.fileId, name: `note-${l.id}.json`, mime: 'application/json',
       data: JSON.stringify(snap), parent: f.root, appProperties: {kind: 'note', noteId: l.id, updated: String(revOf(snap))}});
@@ -1098,12 +1109,13 @@ async function uploadDirtyNotes(f){
     if (revOf(cur) === revOf(snap)) cur.dirty = false;
     await storeNote(cur);
   }
+  S.progress = ''; updateChip();
 }
 async function uploadPendingAttachments(f){
   const list = (await db.get('kv', 'pendingAtt')) || [];
   let done = 0;
   for (const a of list){
-    if (list.length > 3) { S.progress = `添付 ${++done}/${list.length}`; updateChip(); }
+    setProgress('添付', ++done, list.length);
     const blob = await db.get('blobs', a.id);
     if (blob) {
       const fid = await uploadFile({name: a.name, mime: a.mime || 'application/octet-stream', data: blob, parent: f.att, appProperties: {kind: 'att'}});
@@ -1126,6 +1138,7 @@ async function uploadPendingAttachments(f){
     }
     const cur = ((await db.get('kv', 'pendingAtt')) || []).filter(x => x.id !== a.id); await db.put('kv', cur, 'pendingAtt');
   }
+  S.progress = '';
 }
 async function processPendingTrash(){
   let list = (await db.get('kv', 'pendingTrash')) || [];
@@ -1977,7 +1990,7 @@ function renderSettings(){
   const cs = [...S.notes.values()].filter(n => n.claude && !n.deleted).length; if (cs) info.push(`Claude共有 ${cs} 件（ドライブの NoteBox/Claude共有）`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.21-2';
+const APP_VERSION = '2026.10.21-3';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -3514,8 +3527,10 @@ async function syncClaudeDocs(f, changed){   // changed: 変更があったフ�
   const stale = [...S.notes.values()].filter(n => n.cdoc?.id && (!n.claude || n.deleted));
   if (!shared.length && !stale.length) return;
   const folder = await claudeFolder(f);
-  const made = [];
+  const made = [], willPush = shared.filter(n => !n.cdoc || n.cdoc.at !== revOf(n) || (n.cdoc.fv || 1) !== CDOC_FMT);
+  let pi = 0;
   for (const n of shared) {
+    if (willPush.includes(n)) setProgress('Claude共有', ++pi, willPush.length);
     try {
       if (n.cdoc?.id && (!changed || changed.has(n.cdoc.id))) {
         let info;
@@ -3535,6 +3550,7 @@ async function syncClaudeDocs(f, changed){   // changed: 変更があったフ�
       }
     } catch (e) { if (e.auth) throw e; console.warn('Claude共有', n.title, e); }
   }
+  S.progress = '';
   for (const n of stale) {
     try { await gfetch(`${API}/files/${n.cdoc.id}?fields=id`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({trashed: true})}); }
     catch (e) { if (e.auth) throw e; if (e.status !== 404) continue; }
