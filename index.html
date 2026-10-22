@@ -156,8 +156,14 @@ body[data-solo] .ed-head{padding-top:10px}
 #noteList.v-card .ni-meta{flex-wrap:wrap;gap:6px;margin-top:6px}
 #noteList.v-card .ni-meta .nbn,#noteList.v-card .ni-meta .tag:nth-child(n+5){display:none}
 #noteList.v-card .list-empty{grid-column:1/-1}
+.selmode #noteList .note-item{padding-left:46px}
+.selmode #noteList.v-compact .note-item{padding-left:42px}
+.selmode #noteList.v-compact .note-item::before{left:13px;top:50%;margin-top:-11px}
 .selmode #noteList.v-card .note-item{padding-left:0}
-.selmode #noteList.v-card .note-item::before{z-index:2;background:var(--panel)}
+.selmode #noteList.v-card .note-item::before{z-index:2;background:var(--panel);left:10px;top:10px}
+.selmode #noteList.v-card .note-item:not(:has(.ni-thumb)) .ni-body{padding-left:38px}
+.selmode #noteList.v-card .note-item.checked{background:var(--accent-soft);border-color:var(--accent)}
+.selmode #noteList.v-card .note-item.checked::before{background:var(--accent);border-color:var(--accent)}
 .ni-arch{font-size:11px;color:var(--mute)}
 #sortBtn{font-size:15px}
 .selmode .note-item::before{content:"";position:absolute;left:16px;top:15px;width:18px;height:18px;border-radius:50%;border:2px solid var(--mute)}
@@ -2059,7 +2065,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {});
 }
-const APP_VERSION = '2026.10.23-4';
+const APP_VERSION = '2026.10.23-5';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
