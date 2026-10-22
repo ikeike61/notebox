@@ -111,6 +111,11 @@ body[data-solo] .ed-head{padding-top:10px}
 .sync-chip.ok .dot{background:#5fb898}.sync-chip.warn .dot{background:var(--warn)}.sync-chip.err .dot{background:#e0685d}
 .sync-chip.busy .dot{background:#5fb898;animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.3}}
+@keyframes popin{0%{opacity:0;transform:scale(.92) translateY(8px)}60%{opacity:1;transform:scale(1.02)}100%{opacity:1;transform:none}}
+@keyframes edfade{from{opacity:.25;transform:translateY(6px)}to{opacity:1;transform:none}}
+.note-item.pop{animation:popin .45s cubic-bezier(.2,.8,.3,1) both;animation-delay:var(--d,0ms)}
+#editorPane.ed-pop .ed-body{animation:edfade .35s ease-out both}
+@media (prefers-reduced-motion:reduce){.note-item.pop,#editorPane.ed-pop .ed-body{animation:none}}
 .side-link{padding:8px 10px;border-radius:8px;text-align:left;font-size:13px;color:var(--side-fg)}
 
 /* list */
@@ -800,7 +805,7 @@ const S = {
   currentId: null, loadedUpdated: null, range: null,
   token: null, tokenExp: 0,
   syncing: false, syncAgain: false, error: '', lastSyncAt: 0,
-  selMode: false, selected: new Set(), lastClicked: null, suppressClick: false,
+  selMode: false, selected: new Set(), fresh: new Set(), lastClicked: null, suppressClick: false,
 };
 async function storeNote(n){ S.notes.set(n.id, n); await db.put('notes', n); }
 function normalizeNote(d){
@@ -1047,7 +1052,7 @@ async function syncNotebooks(f){
 async function makeConflictCopy(local, remoteData){
   if (local.title === (remoteData.title || '') && local.body === sanitize(remoteData.body || '')) return;
   const copy = {...local, id: uid(), title: (local.title || '無題') + '（競合コピー）', fileId: null, syncedAt: null, dirty: true, updated: now(), claude: 0, cdoc: null};
-  await storeNote(copy);
+  await storeNote(copy); S.fresh.add(copy.id);
   toast('別の端末と編集が重なったため「競合コピー」を作成しました');
 }
 function setProgress(label, i, n){ S.progress = n > 1 ? `${label} ${i}/${n}` : ''; updateChip(); }
@@ -1070,6 +1075,7 @@ async function applyRemoteNote(r){
   l = S.notes.get(id);
   if (l && l.dirty) await makeConflictCopy(l, data);
   await storeNote({...normalizeNote(data), fileId: r.id, syncedAt: ru, dirty: false});
+  S.fresh.add(id);
 }
 async function dropGoneNote(l){   // 別の端末で削除された
   if (l.dirty) { l.fileId = null; l.syncedAt = null; await storeNote(l); }
@@ -1380,7 +1386,11 @@ function refreshEditorAfterSync(){
   if (!S.currentId) return;
   const n = S.notes.get(S.currentId);
   if (!n) { S.currentId = null; showEditor(false); if (isNarrow()) setView('list'); toast('このノートは別の端末で削除されました'); return; }
-  if (n.updated !== S.loadedUpdated && !saveTimer) loadIntoEditor(n);
+  if (n.updated !== S.loadedUpdated && !saveTimer) {   // 別の端末での変更を表示：本文をふわっと出す
+    loadIntoEditor(n);
+    const pane = $('#editorPane'); pane.classList.remove('ed-pop'); void pane.offsetWidth; pane.classList.add('ed-pop');
+    pane.addEventListener('animationend', () => pane.classList.remove('ed-pop'), {once: true});
+  }
   else { updateSaveState(n); if (editorEl.querySelector('img.missing')) hydrate(editorEl); }
 }
 document.addEventListener('selectionchange', () => {
@@ -1946,12 +1956,13 @@ function renderList(){
   const view = listView(), list = $('#noteList');
   list.className = 'v-' + view;
   const dateOf = n => fmtTime(getSort().key === 'created' ? n.created : n.updated);
+  const pop = !S.syncing && S.fresh.size ? S.fresh : null; let pk = 0;   // 同期で届いたノートはポップインで表示
   list.innerHTML = notes.map(n => {
     const tags = (n.tags || []).slice(0, 3).map(t => `<span class="tag" style="--h:${tagHue(t)}">#${esc(t)}</span>`).join('');
     const meta = `<div class="ni-meta">${n.claude && !n.deleted ? '<span class="ni-claude" title="Claudeと共有中">◆Claude</span>' : ''}${n.archived && S.query ? '<span class="ni-arch">🗄アーカイブ</span>' : ''}<span>${dateOf(n)}</span><span class="nbn">${esc(notebookName(n.notebookId))}</span>${view !== 'card' && n.body.includes('<img') ? '<span>🖼</span>' : ''}${view === 'compact' ? '' : tags}${n.dirty ? '<span class="unsynced" title="未同期">●</span>' : ''}</div>`;
     const title = `<div class="ni-title">${n.pinned && !n.deleted ? `<span class="ni-pin" title="ピン留め中">${ICON_PIN_SM}</span> ` : ''}${esc(n.title || '無題のノート')}</div>`;
     const snip = `<div class="ni-snip">${esc((n.text || '').slice(0, 140)) || '&nbsp;'}</div>`;
-    const cls = `note-item ${n.id === S.currentId && !S.selMode ? 'active' : ''} ${S.selected.has(n.id) ? 'checked' : ''}`;
+    const cls = `note-item ${n.id === S.currentId && !S.selMode ? 'active' : ''} ${S.selected.has(n.id) ? 'checked' : ''}${pop?.has(n.id) ? ` pop" style="--d:${Math.min(pk++, 8) * 45}ms` : ''}`;
     if (view === 'card') {
       const m = n.body.match(/<img[^>]*data-att="([^"]+)"/) || n.body.match(/<img[^>]*src="(https?:[^"]+)"/);
       const th = m ? (m[1].startsWith('http') ? `<div class="ni-thumb" style="background-image:url('${esc(m[1])}')"></div>` : `<div class="ni-thumb" data-thumb="${esc(m[1])}"></div>`) : '';
@@ -1960,6 +1971,7 @@ function renderList(){
     if (view === 'compact') return `<li class="${cls}" data-id="${esc(n.id)}"><div class="ni-row">${title}${meta}</div></li>`;
     return `<li class="${cls}" data-id="${esc(n.id)}">${title}${snip}${meta}</li>`;
   }).join('');
+  if (pop) S.fresh = new Set();
   if (view === 'card') observeThumbs();
 }
 function updateChip(){
@@ -1990,7 +2002,7 @@ function renderSettings(){
   const cs = [...S.notes.values()].filter(n => n.claude && !n.deleted).length; if (cs) info.push(`Claude共有 ${cs} 件（ドライブの NoteBox/Claude共有）`);
   $('#syncInfo').textContent = info.join(' ／ ');
 }
-const APP_VERSION = '2026.10.21-3';
+const APP_VERSION = '2026.10.23-1';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
