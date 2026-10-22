@@ -118,7 +118,8 @@ body[data-solo] .ed-head{padding-top:10px}
 .note-item.pop{animation:popin .45s cubic-bezier(.2,.8,.3,1) both;animation-delay:var(--d,0ms)}
 #editorPane.ed-pop .ed-body{animation:edfade .35s ease-out both}
 @media (prefers-reduced-motion:reduce){.note-item.pop,#editorPane.ed-pop .ed-body{animation:none}}
-.side-link{padding:8px 10px;border-radius:8px;text-align:left;font-size:13px;color:var(--side-fg)}
+.side-link{padding:8px 10px;border-radius:8px;text-align:left;font-size:13px;color:var(--side-fg);display:flex;align-items:center;gap:6px}
+.side-link .si{flex:none}
 
 /* list */
 #listPane{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
@@ -413,6 +414,10 @@ dialog{max-height:90vh;overflow:auto;border:0;border-radius:14px;padding:0;backg
 dialog::backdrop{background:rgba(0,0,0,.4)}
 .dlg{padding:20px;display:flex;flex-direction:column;gap:12px}
 .dlg h3{margin:0;font-size:18px}
+.dlg-head{display:flex;align-items:center;justify-content:space-between;gap:8px;position:sticky;top:0;z-index:3;background:var(--panel);margin:-20px -20px 0;padding:14px 10px 10px 20px}
+.dlg .dlg-x{width:36px;height:36px;padding:0;border:0;border-radius:50%;font-size:18px;line-height:1;color:var(--mute);background:transparent;flex:none}
+.dlg-head h3:focus{outline:none}
+.dlg .dlg-x:hover{background:var(--sel);color:var(--fg)}
 .dlg label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute)}
 .dlg input{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font-size:13px}
 .dlg .row{display:flex;gap:8px;flex-wrap:wrap}
@@ -465,6 +470,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
     <nav id="nav"></nav>
     <div class="side-foot">
       <button id="syncChip" class="sync-chip"><span class="dot"></span><span id="syncText">未接続</span></button>
+      <button id="openImport" class="side-link"><svg class="si" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> ノートの取り込み</button>
       <button id="openSettings" class="side-link">⚙︎ 設定</button>
     </div>
   </aside>
@@ -599,7 +605,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
 
 <dialog id="settings">
   <form method="dialog" class="dlg">
-    <h3>設定</h3>
+    <div class="dlg-head"><h3 tabindex="-1" autofocus>設定</h3><button class="dlg-x" value="close" aria-label="閉じる" title="閉じる">✕</button></div>
     <label>Google OAuth クライアントID
       <input id="cidInput" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
     </label>
@@ -614,7 +620,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
     <p class="hint" id="appVer"></p>
     <div class="row"><button type="button" id="forceUpdateBtn">最新版に更新</button></div>
     <h4>バックアップと書き出し</h4>
-    <p class="hint">「バックアップ」は添付ファイルも含めた全ノートのzipで、この画面の「ノートの取り込み」でそのまま戻せます。「Markdown」は他のアプリでも読める形式です。</p>
+    <p class="hint">「バックアップ」は添付ファイルも含めた全ノートのzipで、左メニューの「ノートの取り込み」でそのまま戻せます。「Markdown」は他のアプリでも読める形式です。</p>
     <div class="row"><button type="button" id="backupBtn">全ノートをバックアップ（zip）</button><button type="button" id="mdAllBtn">全ノートをMarkdownで書き出し</button></div>
     <p id="exportInfo" class="hint"></p>
     <h4>Webクリップ</h4>
@@ -627,12 +633,15 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
     <p class="hint">② 「URLを開く」アクションに入れるURL</p>
     <input id="scUrl" readonly>
     <div class="row"><button type="button" data-copy="scUrl">コピー</button></div>
-    <h4>ノートの取り込み</h4>
+  </form>
+</dialog>
+<dialog id="importDlg">
+  <form method="dialog" class="dlg">
+    <div class="dlg-head"><h3 tabindex="-1" autofocus>ノートの取り込み</h3><button class="dlg-x" value="close" aria-label="閉じる" title="閉じる">✕</button></div>
     <p class="hint">NoteBox用の取り込みファイル（.zip）を選ぶと、中のノートと添付ファイルをまとめて追加します。修正用ファイル（.json）を選ぶと、取り込み済みのノートに反映します。添付が多い場合はPCでの取り込みがおすすめです。同じファイルを2回取り込んでも重複はしません。</p>
     <div class="row"><button type="button" id="importBtn">取り込みファイルを選ぶ</button><button type="button" id="pasteImportBtn">テキストを貼り付けて取り込む</button></div>
     <p id="importInfo" class="hint"></p>
     <input type="file" id="importInput" hidden>
-    <div class="row end"><button value="close">閉じる</button></div>
   </form>
 </dialog>
 <dialog id="linkDlg">
@@ -2020,7 +2029,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {});
 }
-const APP_VERSION = '2026.10.23-2';
+const APP_VERSION = '2026.10.23-3';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2084,6 +2093,8 @@ $('#scrim').addEventListener('click', closeDrawer);
 $('#backBtn').addEventListener('click', () => { if (history.state?.v === 'editor') history.back(); else closeEditor(); });
 window.addEventListener('popstate', () => { if (document.body.dataset.view === 'editor') closeEditor(); });
 $('#openSettings').addEventListener('click', openSettings);
+function openImport(){ closeDrawer(); $('#importDlg').showModal(); }
+$('#openImport').addEventListener('click', openImport);
 $('#syncChip').addEventListener('click', () => {
   if (!clientId()) { openSettings(); return; }
   if (S.error) toast('同期エラー: ' + S.error);
@@ -2165,7 +2176,7 @@ async function saveClip(c){
 async function handleIncomingClip(){
   const c = readIncomingClip(); if (!c) return false;
   history.replaceState(null, '', location.pathname);
-  if (c.paste) { if ($('#settings').open) $('#settings').close(); showBanner('ショートカットから届いたクリップを保存します', 'クリップを保存', pasteClip, {sticky: true}); return 'paste'; }
+  if (c.paste) { for (const d of ['#settings', '#importDlg']) if ($(d).open) $(d).close(); showBanner('ショートカットから届いたクリップを保存します', 'クリップを保存', pasteClip, {sticky: true}); return 'paste'; }
   await saveClip(c); return true;
 }
 // クリップボードの内容（ショートカットが書き込んだJSON、またはURL・文章）をクリップとして保存
@@ -3689,7 +3700,7 @@ async function applyRevision(pkg){
     renderAll(); scheduleSync(); toast('元に戻しました');
   });
   const first = made[0] || replaced[0];
-  if (first) { if ($('#settings').open) $('#settings').close(); openNote(first.id); }
+  if (first) { for (const d of ['#settings', '#importDlg']) if ($(d).open) $(d).close(); openNote(first.id); }
   return [made.length ? `${made.length}件の修正版ノートを作成しました` : '', replaced.length ? `${replaced.length}件のノートを書き換えました` : '',
     skipped.length ? `取り込み済みなどで${skipped.length}件はスキップしました` : ''].filter(Boolean).join('／') || '取り込む内容がありませんでした';
 }
