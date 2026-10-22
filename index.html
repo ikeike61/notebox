@@ -111,6 +111,8 @@ body[data-solo] .ed-head{padding-top:10px}
 .sync-chip.ok .dot{background:#5fb898}.sync-chip.warn .dot{background:var(--warn)}.sync-chip.err .dot{background:#e0685d}
 .sync-chip.busy .dot{background:#5fb898;animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.3}}
+.sync-log{font-size:12px;color:var(--mute);margin:4px 0 8px}.sync-log summary{cursor:pointer}
+.sync-log ul{list-style:none;padding:0;margin:6px 0;max-height:220px;overflow:auto}.sync-log li{padding:4px 0;border-bottom:1px solid var(--line)}
 @keyframes popin{0%{opacity:0;transform:scale(.92) translateY(8px)}60%{opacity:1;transform:scale(1.02)}100%{opacity:1;transform:none}}
 @keyframes edfade{from{opacity:.25;transform:translateY(6px)}to{opacity:1;transform:none}}
 .note-item.pop{animation:popin .45s cubic-bezier(.2,.8,.3,1) both;animation-delay:var(--d,0ms)}
@@ -607,6 +609,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
       <button type="button" id="disconnectBtn">接続解除</button>
     </div>
     <p id="syncInfo" class="hint"></p>
+    <details class="sync-log"><summary>最近の同期の内容（送信・受信したノート）</summary><ul id="syncLog"></ul></details>
     <label style="flex-direction:row;align-items:center;gap:8px;color:var(--fg)"><input type="checkbox" id="autoReconn"> 接続が切れたら、次に画面を触ったときに自動で再接続する</label>
     <p class="hint" id="appVer"></p>
     <div class="row"><button type="button" id="forceUpdateBtn">最新版に更新</button></div>
@@ -993,8 +996,11 @@ async function sync(opts = {}){
     await uploadPendingAttachments(f);
     await processPendingTrash();
     if (!inc || inc.meta || nbKey(S.notebooks) !== ((await db.get('kv', 'nbSynced')) || '')) await syncNotebooks(f);
-    await syncNotes(f, inc);
-    await syncClaudeDocs(f, inc && inc.changed);
+    S.log = {at: now(), recv: [], sent: []};
+    await syncNotes(f, inc);                      // 受信
+    await syncClaudeDocs(f, inc && inc.changed);  // 写しの更新は送信の前に（ノートを2回送らないため）
+    await uploadDirtyNotes(f);                    // 送信
+    await saveSyncLog();
     if (token) await db.put('kv', {token, full: inc ? chg.full : now()}, 'chg'); else await db.del('kv', 'chg');
     S.lastSyncAt = now(); await db.put('kv', S.lastSyncAt, 'lastSync');
   } catch (e) {
@@ -1055,6 +1061,17 @@ async function makeConflictCopy(local, remoteData){
   await storeNote(copy); S.fresh.add(copy.id);
   toast('別の端末と編集が重なったため「競合コピー」を作成しました');
 }
+// 同期の記録（設定画面で確認できる。送受信のあった直近10回分）
+async function saveSyncLog(){
+  const g = S.log; if (!g || (!g.recv.length && !g.sent.length)) return;
+  const list = ((await db.get('kv', 'syncLog')) || []).slice(0, 9); list.unshift(g); await db.put('kv', list, 'syncLog');
+}
+async function renderSyncLog(){
+  const list = (await db.get('kv', 'syncLog')) || [], box = $('#syncLog');
+  const fmt = arr => { const m = new Map(); arr.forEach(t => m.set(t, (m.get(t) || 0) + 1)); return [...m].map(([t, c]) => esc(t) + (c > 1 ? `（${c}回）` : '')).join('、'); };
+  box.innerHTML = list.length ? list.map(g => `<li><b>${new Date(g.at).toLocaleString('ja-JP', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})}</b>`
+    + (g.sent.length ? `<div>送信 ${g.sent.length}：${fmt(g.sent)}</div>` : '') + (g.recv.length ? `<div>受信 ${g.recv.length}：${fmt(g.recv)}</div>` : '') + '</li>').join('') : '<li>まだ記録はありません</li>';
+}
 function setProgress(label, i, n){ S.progress = n > 1 ? `${label} ${i}/${n}` : ''; updateChip(); }
 const needsDownload = r => { const p = r.appProperties || {}; const l = S.notes.get(p.noteId); return !!p.noteId && !(l && l.syncedAt === (Number(p.updated) || 0)); };
 async function applyRemoteNotes(list){   // 受信が必要なものは件数を表示しながら
@@ -1075,7 +1092,7 @@ async function applyRemoteNote(r){
   l = S.notes.get(id);
   if (l && l.dirty) await makeConflictCopy(l, data);
   await storeNote({...normalizeNote(data), fileId: r.id, syncedAt: ru, dirty: false});
-  S.fresh.add(id);
+  S.fresh.add(id); S.log?.recv.push(data.deleted ? `${data.title || '無題のノート'}（ゴミ箱へ）` : (data.title || '無題のノート'));
 }
 async function dropGoneNote(l){   // 別の端末で削除された
   if (l.dirty) { l.fileId = null; l.syncedAt = null; await storeNote(l); }
@@ -1099,7 +1116,6 @@ async function syncNotes(f, inc){
       if (await isGone(l.fileId)) await dropGoneNote(l);
     }
   }
-  await uploadDirtyNotes(f);
 }
 async function uploadDirtyNotes(f){
   const pendingAtt = new Set(((await db.get('kv', 'pendingAtt')) || []).map(a => a.id));
@@ -1108,6 +1124,7 @@ async function uploadDirtyNotes(f){
   for (const l of todo){
     setProgress('送信', ++i, todo.length);
     const snap = serialize(l);
+    S.log?.sent.push(l.deleted ? `${l.title || '無題のノート'}（ゴミ箱へ）` : (l.title || '無題のノート'));
     const fid = await uploadFile({fileId: l.fileId, name: `note-${l.id}.json`, mime: 'application/json',
       data: JSON.stringify(snap), parent: f.root, appProperties: {kind: 'note', noteId: l.id, updated: String(revOf(snap))}});
     const cur = S.notes.get(l.id); if (!cur) continue;
@@ -2001,8 +2018,9 @@ function renderSettings(){
   info.push(`ノート ${[...S.notes.values()].filter(n => !n.deleted).length} 件`);
   const cs = [...S.notes.values()].filter(n => n.claude && !n.deleted).length; if (cs) info.push(`Claude共有 ${cs} 件（ドライブの NoteBox/Claude共有）`);
   $('#syncInfo').textContent = info.join(' ／ ');
+  renderSyncLog().catch(() => {});
 }
-const APP_VERSION = '2026.10.23-1';
+const APP_VERSION = '2026.10.23-2';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   $('#appVer').textContent = 'アプリの版：' + APP_VERSION; renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -3568,7 +3586,6 @@ async function syncClaudeDocs(f, changed){   // changed: 変更があったフ�
     catch (e) { if (e.auth) throw e; if (e.status !== 404) continue; }
     n.cdoc = null; n.rev = now(); n.dirty = true; await storeNote(n);
   }
-  if ([...S.notes.values()].some(n => n.dirty)) await uploadDirtyNotes(f);   // 写しの情報もノートに保存
   if (made.length) {
     renderAll();
     showBanner(made.length === 1 ? `Claudeの修正を「${made[0].title}」として保存しました` : `Claudeの修正を${made.length}件のノートとして保存しました`, '開く', () => openNote(made[0].id));
