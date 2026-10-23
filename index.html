@@ -453,8 +453,11 @@ img.lazy:not([data-w]){width:min(100%,var(--pw,480px))}
 #cmtPop button{font-size:13px;padding:4px 10px;border-radius:7px;color:var(--fg)}
 #cmtPop button:hover{background:var(--sel)}#cmtPop button.danger{color:var(--danger)}
 #cmtBtn{position:relative;font-size:16px}
-#varBtn{position:relative;font-size:12px;color:#b7791f;border:1px solid rgba(214,158,46,.5);border-radius:8px;height:28px;padding:0 8px;margin-right:2px}
-#varBtn .badge{margin-left:4px;min-width:16px;height:16px;border-radius:8px;background:#d99a00;color:#fff;font-size:10.5px;line-height:16px;padding:0 4px;display:inline-block}
+#varBtn{position:relative;color:#d08a00;flex:none}
+#varBtn .badge{position:absolute;top:1px;right:-2px;min-width:15px;height:15px;border-radius:8px;background:#d08a00;color:#fff;font-size:10px;line-height:15px;padding:0 3px;box-shadow:0 0 0 2px var(--bg)}
+@keyframes varpulse{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}
+#varBtn.new .ic{animation:varpulse .45s ease-out}
+@media (prefers-color-scheme: dark){#varBtn{color:#f0b429}#varBtn .badge{background:#c98400}}
 #varDlg select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font-size:14px}
 #varList{display:flex;flex-direction:column;gap:10px}
 .vg{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
@@ -593,7 +596,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
         <button type="button" id="claudeBtn" title="Claudeと共有（Googleドキュメントの写しを作る）">Claude共有</button>
         <button type="button" id="countBtn" title="目次と文字数"></button>
         <span id="saveState" class="save-state"></span>
-        <button class="icon-btn text" id="varBtn" title="表記ゆれの候補" hidden>表記ゆれ<span class="badge" id="varCount"></span></button>
+        <button class="icon-btn" id="varBtn" title="表記ゆれの候補" aria-label="表記ゆれの候補" hidden><i data-ic="alert"></i><span class="badge" id="varCount"></span></button>
         <button class="icon-btn" id="cmtBtn" title="コメント一覧" aria-label="コメント一覧" hidden><i data-ic="comment"></i><span class="badge" id="cmtCount"></span></button>
         <button class="icon-btn" id="pinBtn" aria-label="ピン留め" title="ピン留め"><i data-ic="pin"></i></button>
         <button class="icon-btn text" id="restoreBtn" hidden>復元</button>
@@ -863,6 +866,7 @@ const IC = {
   share: '<path d="M18 2a3.5 3.5 0 1 1-2.9 5.5l-6 3a3.5 3.5 0 0 1 0 3l6 3A3.5 3.5 0 1 1 14.6 18l-6-3a3.5 3.5 0 1 1 0-6l6-3A3.5 3.5 0 0 1 18 2z"/>',
   olist: '<path d="M3 3.5h2.4V9H3.9V5.2H3zM2.6 12.6c.3-1 1.1-1.6 2.1-1.6 1.2 0 2 .7 2 1.7 0 .7-.4 1.2-1.2 1.8l-.8.6h2.1V16.4H2.6v-1.1l1.9-1.6c.5-.4.7-.7.7-1 0-.3-.2-.5-.6-.5-.3 0-.6.2-.7.6z"/><rect x="9" y="4.6" width="12.5" height="2.8" rx="1.4"/><rect x="9" y="12.1" width="12.5" height="2.8" rx="1.4"/><rect x="9" y="18.6" width="12.5" height="2.8" rx="1.4"/><circle cx="4.5" cy="20" r="1.6"/>',
   more: '<circle cx="5" cy="12" r="2.3"/><circle cx="12" cy="12" r="2.3"/><circle cx="19" cy="12" r="2.3"/>',
+  alert: '<path d="M12 2a10 10 0 1 1 0 20a10 10 0 1 1 0-20zM10.5 6l.4 8.2h2.2l.4-8.2zM12 15.6a1.6 1.6 0 1 0 0 3.2a1.6 1.6 0 1 0 0-3.2z"/>',
   info: '<path d="M12 2a10 10 0 1 1 0 20a10 10 0 1 1 0-20zm-1.5 8v8h3v-8zM12 5.3a1.8 1.8 0 1 0 0 3.6a1.8 1.8 0 1 0 0-3.6z"/>',
 };
 const ic = (n, sz = 18, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" width="${sz}" height="${sz}" fill="currentColor" fill-rule="evenodd" aria-hidden="true">${IC[n] || ''}</svg>`;
@@ -2246,7 +2250,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {});
 }
-const APP_VERSION = '2026.10.23-11';
+const APP_VERSION = '2026.10.24-1';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2769,8 +2773,11 @@ async function checkForUpdate(){
 $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
+  {d: '2026年10月24日', items: [
+    '表記ゆれの知らせを、文字から「！」のアイコン（件数付き）に変更。スマホでも上部に収まるように'
+  ]},
   {d: '2026年10月23日', items: [
-    '表記ゆれチェックを追加：同じタグのノートの中で、カタカナの書き方（サーバー／サーバ、中黒、ヴ）・送りがな・漢字とひらがな・全角半角の食い違いを見つけ、選んだ表記にまとめてそろえられるように。開いているノートに候補があれば上部に「表記ゆれ」を表示',
+    '表記ゆれチェックを追加：同じタグのノートの中で、カタカナの書き方（サーバー／サーバ、中黒、ヴ）・送りがな・漢字とひらがな・全角半角の食い違いを見つけ、選んだ表記にまとめてそろえられるように。開いているノートに候補があれば上部に「！」のアイコン（件数付き）を表示',
     'iPhoneのChromeなどの共有ボタンからクリップできるように（ショートカットがSafariリーダーで本文を取り出す方式。手順はREADME）',
     '「過去の版」で、選んだ版と今の内容の違い（追加・削除・書き換えた箇所）を色分けして表示',
     '競合コピーを開くと「元のノートと見比べてまとめる」を表示。違う箇所ごとに残す方を選んで、元のノートに1つにまとめられるように',
@@ -3484,8 +3491,9 @@ function updateVarBtn(){
     if (!n || n.deleted || lsGet('nb.varSuggest') === '0') { b.hidden = true; return; }
     const opt = varScopeOptions(n)[0], notes = varNotesFor(n, opt.v);
     const c = scanVariants(notes).filter(g => g.list.some(f => f.notes.has(n.id))).length;
-    b.hidden = !c; $('#varCount').textContent = c || '';
-    b.title = `表記ゆれの候補 ${c} 組（${opt.label}）`;
+    const was = b.hidden; b.hidden = !c; $('#varCount').textContent = c > 9 ? '9+' : (c || '');
+    b.title = b.ariaLabel = `表記ゆれの候補 ${c} 組（${opt.label}）`;
+    if (c && was) { b.classList.remove('new'); void b.offsetWidth; b.classList.add('new'); }
   }, 900);
 }
 $('#varBtn').addEventListener('click', openVariants);
