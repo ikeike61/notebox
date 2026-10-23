@@ -2219,7 +2219,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {});
 }
-const APP_VERSION = '2026.10.23-9';
+const APP_VERSION = '2026.10.23-10';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2395,10 +2395,17 @@ async function pasteClip(){
   t = (t || '').trim();
   let c = null;
   try { const d = JSON.parse(t); if (d && (d.html || d.url)) c = d; } catch {}
-  if (!c && t.startsWith(CLIP_MARK)) c = parseMarkedClip(t);
+  if (!c && t.startsWith(CLIP_MARK)) {
+    c = parseMarkedClip(t);
+    if (!c.url && !c.title && !c.html) { showBanner('クリップの内容が届いていません。ショートカットの「テキスト」の2〜4行目に変数が入っているか確認してください', 'OK', () => {}, {sticky: true}); return; }
+  }
   if (!c) {
     const url = (t.match(/https?:\/\/\S+/) || [''])[0];
     if (!t) { toast('クリップボードが空です。もう一度共有ボタンからクリップしてください'); return; }
+    let own = false; try { own = !!url && new URL(url).host === location.host && new URL(url).pathname.startsWith(location.pathname.replace(/index\.html$/, '')); } catch {}
+    if (own || t === CLIP_MARK) {   // ショートカットの「クリップボードにコピー」が抜けていると、設定からコピーしたURLや目印が残っている
+      showBanner('クリップの内容が届いていません。ショートカットの「URLを開く」の前に「クリップボードにコピー」があるか確認してください', 'OK', () => {}, {sticky: true}); return;
+    }
     c = {title: '', url, text: t.replace(url, '').trim()};
   }
   await saveClip(c);
