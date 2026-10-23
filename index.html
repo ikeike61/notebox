@@ -708,6 +708,9 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
     <p class="hint">② 「URLを開く」アクションに入れるURL</p>
     <input id="scUrl" readonly>
     <div class="row"><button type="button" data-copy="scUrl">コピー</button></div>
+    <p class="hint"><b>iPhoneのChromeなど、共有ボタン用ショートカット</b>：Safariリーダーで本文を取り出す方式です（ログインが必要なページは取れません。手順はREADME）。「テキスト」アクションの1行目に入れる目印：</p>
+    <input id="scMark" readonly value="NOTEBOX-CLIP">
+    <div class="row"><button type="button" data-copy="scMark">コピー</button></div>
   </form>
 </dialog>
 <dialog id="aboutDlg">
@@ -2216,7 +2219,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {});
 }
-const APP_VERSION = '2026.10.23-8';
+const APP_VERSION = '2026.10.23-9';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2345,7 +2348,7 @@ async function saveClip(c){
   let site = c.site || '';
   try { if (!site && c.url) site = new URL(c.url).hostname; } catch {}
   const d = new Date();
-  const head = c.url ? `<p><a href="${esc(c.url)}">🔗 ${esc(site || c.url)}</a>　${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} クリップ</p><hr>` : '';
+  const head = c.url ? `<p>出典：<a href="${esc(c.url)}">${esc(site || c.url)}</a>　${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} クリップ</p><hr>` : '';
   let content = '';
   if (c.html) content = c.html;
   else if (c.text) content = c.text.split(/\n+/).map(l => `<p>${esc(l)}</p>`).join('');
@@ -2366,6 +2369,24 @@ async function handleIncomingClip(){
   if (c.paste) { for (const d of ['#settings', '#importDlg']) if ($(d).open) $(d).close(); showBanner('ショートカットから届いたクリップを保存します', 'クリップを保存', pasteClip, {sticky: true}); return 'paste'; }
   await saveClip(c); return true;
 }
+// Chromeなど共有ボタン用ショートカット（Safariリーダーで本文を取り出す）の形式：
+// 1行目 NOTEBOX-CLIP ／ 2行目 URL ／ 3行目 タイトル ／ 4行目以降 本文のHTML
+const CLIP_MARK = 'NOTEBOX-CLIP';
+function parseMarkedClip(t){
+  const lines = t.split(/\r?\n/);
+  const url = ((lines[1] || '').match(/https?:\/\/\S+/) || [''])[0];
+  const title = (lines[2] || '').trim();
+  let html = lines.slice(3).join('\n').trim();
+  if (/<body[\s>]/i.test(html) || /<html[\s>]/i.test(html)) {
+    const d = new DOMParser().parseFromString(html, 'text/html');
+    d.querySelectorAll('style,script,title,meta').forEach(x => x.remove());
+    html = d.body.innerHTML;
+  } else if (html && !/<[a-z][\s\S]*>/i.test(html)) html = html.split(/\n+/).map(l => `<p>${esc(l)}</p>`).join('');   // HTMLでなく文字だけのとき
+  // 本文の先頭がタイトルと同じ見出しなら外す
+  const d = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html'), first = d.body.firstElementChild;
+  if (first && /^H[1-3]$/.test(first.tagName) && first.textContent.trim() === title) { first.remove(); html = d.body.innerHTML; }
+  return {v: 1, title, url, html, sel: false};
+}
 // クリップボードの内容（ショートカットが書き込んだJSON、またはURL・文章）をクリップとして保存
 async function pasteClip(){
   let t = '';
@@ -2374,9 +2395,10 @@ async function pasteClip(){
   t = (t || '').trim();
   let c = null;
   try { const d = JSON.parse(t); if (d && (d.html || d.url)) c = d; } catch {}
+  if (!c && t.startsWith(CLIP_MARK)) c = parseMarkedClip(t);
   if (!c) {
     const url = (t.match(/https?:\/\/\S+/) || [''])[0];
-    if (!t) { toast('クリップボードが空です。もう一度Safariの共有ボタンからクリップしてください'); return; }
+    if (!t) { toast('クリップボードが空です。もう一度共有ボタンからクリップしてください'); return; }
     c = {title: '', url, text: t.replace(url, '').trim()};
   }
   await saveClip(c);
@@ -2714,6 +2736,7 @@ $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
   {d: '2026年10月23日', items: [
+    'iPhoneのChromeなどの共有ボタンからクリップできるように（ショートカットがSafariリーダーで本文を取り出す方式。手順はREADME）',
     '「過去の版」で、選んだ版と今の内容の違い（追加・削除・書き換えた箇所）を色分けして表示',
     '競合コピーを開くと「元のノートと見比べてまとめる」を表示。違う箇所ごとに残す方を選んで、元のノートに1つにまとめられるように',
     '設定に「容量の整理」を追加：どのノートからも使われていない画像・添付ファイルをドライブのゴミ箱へ移し、端末の不要なデータも削除',
