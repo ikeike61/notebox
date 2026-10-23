@@ -453,6 +453,22 @@ img.lazy:not([data-w]){width:min(100%,var(--pw,480px))}
 #cmtPop button{font-size:13px;padding:4px 10px;border-radius:7px;color:var(--fg)}
 #cmtPop button:hover{background:var(--sel)}#cmtPop button.danger{color:var(--danger)}
 #cmtBtn{position:relative;font-size:16px}
+#varBtn{position:relative;font-size:12px;color:#b7791f;border:1px solid rgba(214,158,46,.5);border-radius:8px;height:28px;padding:0 8px;margin-right:2px}
+#varBtn .badge{margin-left:4px;min-width:16px;height:16px;border-radius:8px;background:#d99a00;color:#fff;font-size:10.5px;line-height:16px;padding:0 4px;display:inline-block}
+#varDlg select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font-size:14px}
+#varList{display:flex;flex-direction:column;gap:10px}
+.vg{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.vg.cur{border-color:rgba(214,158,46,.7);background:rgba(214,158,46,.06)}
+.vg .vk{font-size:11px;color:var(--mute)}
+.vg .forms{display:flex;flex-wrap:wrap;gap:6px}
+.vg .form{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;cursor:pointer;background:var(--panel)}
+.dlg .vg .form{flex-direction:row;color:var(--fg)}
+.vg .form:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.vg .form small{color:var(--mute);font-size:11px}
+.vg .acts{display:flex;flex-wrap:wrap;gap:6px}
+.vg .acts button{padding:6px 10px;font-size:13px}
+.vg .where{font-size:12px;color:var(--mute);display:flex;flex-wrap:wrap;gap:4px 10px}
+.vg .where button{padding:2px 6px;font-size:12px;border:0;color:var(--accent);text-decoration:underline}
 #cmtBtn .badge{position:absolute;top:2px;right:0;min-width:16px;height:16px;border-radius:8px;background:#d99a00;color:#fff;font-size:10.5px;line-height:16px;padding:0 4px}
 #cmtText{width:100%;min-height:110px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;font-size:14px;resize:vertical}
 .cmt-quote{font-size:13px;color:var(--mute);border-left:3px solid #d99a00;padding:2px 8px;margin:0;max-height:4.5em;overflow:hidden}
@@ -577,6 +593,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
         <button type="button" id="claudeBtn" title="Claudeと共有（Googleドキュメントの写しを作る）">Claude共有</button>
         <button type="button" id="countBtn" title="目次と文字数"></button>
         <span id="saveState" class="save-state"></span>
+        <button class="icon-btn text" id="varBtn" title="表記ゆれの候補" hidden>表記ゆれ<span class="badge" id="varCount"></span></button>
         <button class="icon-btn" id="cmtBtn" title="コメント一覧" aria-label="コメント一覧" hidden><i data-ic="comment"></i><span class="badge" id="cmtCount"></span></button>
         <button class="icon-btn" id="pinBtn" aria-label="ピン留め" title="ピン留め"><i data-ic="pin"></i></button>
         <button class="icon-btn text" id="restoreBtn" hidden>復元</button>
@@ -745,6 +762,16 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
     <p class="hint">Claudeが出した修正JSON（{"format":"notebox-patch" …}）をそのまま貼り付けてください。前後の説明文や ``` が含まれていても大丈夫です。</p>
     <textarea id="pasteText" style="width:100%;min-height:180px;font:12px/1.5 ui-monospace,Menlo,monospace;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)"></textarea>
     <div class="row end"><button type="button" id="pasteCancel">キャンセル</button><button class="primary" id="pasteOk">取り込む</button></div>
+  </form>
+</dialog>
+<dialog id="varDlg">
+  <form method="dialog" class="dlg">
+    <div class="dlg-head"><h3 tabindex="-1" autofocus>表記ゆれチェック</h3><button class="dlg-x" value="close" aria-label="閉じる" title="閉じる"><i data-ic="close"></i></button></div>
+    <label>調べる範囲<select id="varScope"></select></label>
+    <p class="hint" id="varHint"></p>
+    <div id="varList"></div>
+    <div class="row" id="varFoot"></div>
+    <label style="flex-direction:row;align-items:center;gap:8px;color:var(--fg)"><input type="checkbox" id="varSuggest"> ノートを開いたとき、表記ゆれがあれば上部に「表記ゆれ」を表示する</label>
   </form>
 </dialog>
 <dialog id="mergeDlg">
@@ -1536,7 +1563,7 @@ async function saveCurrent(){
   Object.assign(n, {title, body, text: htmlToText(body), tags, updated: now(), dirty: true});
   S.loadedUpdated = n.updated;
   await storeNote(n);
-  updateSaveState(n); renderList(); renderNav(); updateChip(); scheduleSync(4000);
+  updateSaveState(n); renderList(); renderNav(); updateChip(); scheduleSync(4000); updateVarBtn();
   if (SOLO) document.title = (n.title || '無題のノート') + ' - NoteBox';
 }
 function updateSaveState(n){
@@ -1566,7 +1593,7 @@ function loadIntoEditor(n){
   renderNbSelect(n); updateSaveState(n);
   deselectImage(); applyImgSizes(editorEl); hydrate(editorEl);
   updateClaudeBtn(n);
-  histInit(n); hideCmtPop(); updateCmtBtn(); updateCount(); markBrokenLinks(); renderBacklinks(n.id); hideLinkPop(); hideSlash();
+  histInit(n); hideCmtPop(); updateCmtBtn(); updateVarBtn(); updateCount(); markBrokenLinks(); renderBacklinks(n.id); hideLinkPop(); hideSlash();
   if (!$('#findBar').hidden) runFind();
 }
 async function openNote(id, {push = true} = {}){
@@ -2219,7 +2246,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {});
 }
-const APP_VERSION = '2026.10.23-10';
+const APP_VERSION = '2026.10.23-11';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2743,6 +2770,7 @@ $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
   {d: '2026年10月23日', items: [
+    '表記ゆれチェックを追加：同じタグのノートの中で、カタカナの書き方（サーバー／サーバ、中黒、ヴ）・送りがな・漢字とひらがな・全角半角の食い違いを見つけ、選んだ表記にまとめてそろえられるように。開いているノートに候補があれば上部に「表記ゆれ」を表示',
     'iPhoneのChromeなどの共有ボタンからクリップできるように（ショートカットがSafariリーダーで本文を取り出す方式。手順はREADME）',
     '「過去の版」で、選んだ版と今の内容の違い（追加・削除・書き換えた箇所）を色分けして表示',
     '競合コピーを開くと「元のノートと見比べてまとめる」を表示。違う箇所ごとに残す方を選んで、元のノートに1つにまとめられるように',
@@ -3300,6 +3328,168 @@ $('#replAll').addEventListener('click', async () => {
     lastGlobalUndo = null; renderAll(); scheduleSync(); toast('置換を元に戻しました');
   });
 });
+
+/* ---------------- 表記ゆれチェック ---------------- */
+// 範囲：同じタグが付いたノート（タグがなければこのノートだけ）
+const VAR_DICT = [['出来る','できる'],['出来た','できた'],['出来ない','できない'],['出来て','できて'],['出来れば','できれば'],['下さい','ください'],['分かる','わかる'],['分かった','わかった'],['分からない','わからない'],['分かって','わかって'],
+  ['全て','すべて'],['既に','すでに'],['更に','さらに'],['様々','さまざま'],['色々','いろいろ'],['沢山','たくさん'],['一緒','いっしょ'],['殆ど','ほとんど'],['予め','あらかじめ'],['頂く','いただく'],['頂きます','いただきます'],
+  ['致します','いたします'],['何故','なぜ'],['時々','ときどき'],['今更','いまさら'],['改めて','あらためて'],['宜しく','よろしく'],['因みに','ちなみに'],['勿論','もちろん'],['流石','さすが'],['素晴らしい','すばらしい'],
+  ['綺麗','きれい'],['一旦','いったん'],['及び','および'],['又は','または'],['但し','ただし'],['相変わらず','あいかわらず'],['敢えて','あえて'],['兎に角','とにかく'],['滅多に','めったに'],['呟く','つぶやく'],['頷く','うなずく'],
+  ['微笑む','ほほえむ'],['眩しい','まぶしい'],['煌めく','きらめく'],['囁く','ささやく'],['躊躇う','ためらう'],['戸惑う','とまどう'],['呆然','ぼうぜん'],['溜息','ため息'],['我慢','がまん']];
+const VAR_KATA = /[ァ-ヺ][ァ-ヺー・＝]*[ァ-ヺー]/g, VAR_OKURI = /[一-龯々〆ヶ]{1,3}[ぁ-ゖ]{1,2}[一-龯々〆ヶ]{1,3}[ぁ-ゖ]?[いきしちにひみりぎじびぴえけせてねへめれげぜでべぺ]/g;
+// 送りがなのゆれは「取り込み／取込み」「打ち合わせ／打合せ」のように、最後に送りがなが付く形どうしで比べる（「突き破る／突破」のような別の言葉を拾わないため）
+// 送りがなとみなさない（助詞や、言い切り・連体の形でつながっているだけのもの）
+const VAR_NOT_OKURI = /^(?:から|より|まで|など|だけ|って)$|[をがのはにとでもへやかねよるたなだて]$/;
+const WIDTH_GROUPS = {'w:digit': {half: /[0-9]/g, full: /[０-９]/g, label: ['半角の数字（123）', '全角の数字（１２３）']}, 'w:alpha': {half: /[A-Za-z]/g, full: /[Ａ-Ｚａ-ｚ]/g, label: ['半角の英字（ABC）', '全角の英字（ＡＢＣ）']}};
+const toFull = s => s.replace(/[0-9A-Za-z]/g, c => String.fromCharCode(c.charCodeAt(0) + 0xFEE0)), toHalf = s => s.replace(/[０-９Ａ-Ｚａ-ｚ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+const kataKey = w => w.replace(/ヴァ/g, 'バ').replace(/ヴィ/g, 'ビ').replace(/ヴェ/g, 'ベ').replace(/ヴォ/g, 'ボ').replace(/ヴ/g, 'ブ').replace(/[・＝\s]/g, '').replace(/ー+$/, '');
+const KATA_CH = /[ァ-ヺー]/;
+function varScopeNotes(n){
+  const all = [...S.notes.values()].filter(x => !x.deleted && x.notebookId !== TPL_NB);
+  return {tag: k => all.filter(x => (x.tags || []).includes(k)), self: () => [n]};
+}
+function noteText(n){ return n.id === S.currentId ? (titleEl.value + '\n' + htmlToText(editorHTML())) : (n.title + '\n' + (n.text || '')); }
+function scanVariants(notes){
+  const G = new Map();
+  const add = (kind, key, surf, nid, cnt = 1) => {
+    let g = G.get(key); if (!g) G.set(key, g = {key, kind, forms: new Map()});
+    let f = g.forms.get(surf); if (!f) g.forms.set(surf, f = {surf, count: 0, notes: new Set()});
+    f.count += cnt; f.notes.add(nid);
+  };
+  const texts = notes.map(n => [n.id, noteText(n)]);
+  const okuriKeys = new Map();
+  for (const [id, t] of texts) {
+    for (const m of t.matchAll(VAR_KATA)) { const w = m[0].replace(/[・＝]+$/, ''); if (w.replace(/ー/g, '').length >= 2) add('kata', 'k:' + kataKey(w), w, id); }
+    for (const m of t.matchAll(VAR_OKURI)) {
+      const inner = m[0].match(/[ぁ-ゖ]+/)[0]; if (VAR_NOT_OKURI.test(inner)) continue;
+      const tail = m[0].slice(-1), k = m[0].replace(/[ぁ-ゖ]+$/, '').replace(/[ぁ-ゖ]/g, '') + tail;
+      if (k.length >= 3 && k.length <= 6) { add('okuri', 'o:' + k, m[0], id); okuriKeys.set(k, true); }
+    }
+    for (const [key, w] of Object.entries(WIDTH_GROUPS)) {
+      const h = (t.match(w.half) || []).length, f = (t.match(w.full) || []).length;
+      if (h) add('wide', key, w.label[0], id, h); if (f) add('wide', key, w.label[1], id, f);
+    }
+    for (const [a, b] of VAR_DICT) for (const w of [a, b]) { const c = t.split(w).length - 1; if (c) add('dict', 'd:' + a, w, id, c); }
+  }
+  for (const [id, t] of texts) for (const k of okuriKeys.keys()) { const c = t.split(k).length - 1; if (c) add('okuri', 'o:' + k, k, id, c); }   // 送りがなを省いた書き方
+  let ign = new Set(); try { ign = new Set(JSON.parse(localStorage.getItem('nb.varIgnore') || '[]')); } catch {}
+  return [...G.values()].filter(g => g.forms.size >= 2 && !ign.has(g.key))
+    .map(g => ({...g, list: [...g.forms.values()].sort((a, b) => b.count - a.count)}))
+    .sort((a, b) => b.list.reduce((s, f) => s + f.count, 0) - a.list.reduce((s, f) => s + f.count, 0));
+}
+const VAR_KIND = {kata: 'カタカナの書き方（長音・中黒・ヴ）', okuri: '送りがな', wide: '全角・半角', dict: '漢字・ひらがな'};
+let VARS = {groups: [], notes: [], undo: null};
+function varScopeOptions(n){
+  const tags = (n.id === S.currentId ? S.editTags : n.tags) || [];
+  return [...tags.map(t => ({v: 't:' + t, label: `タグ「${t}」のノート（${varScopeNotes(n).tag(t).length}件）`})), {v: 'self', label: 'このノートだけ'}];
+}
+function varNotesFor(n, v){ return v.startsWith('t:') ? varScopeNotes(n).tag(v.slice(2)) : [n]; }
+async function openVariants(){
+  const n = S.notes.get(S.currentId); if (!n) return;
+  VARS.undo = null; VARS.msg = '';
+  await flushSave();
+  const opts = varScopeOptions(n), keep = $('#varScope').value;
+  $('#varScope').innerHTML = opts.map(o => `<option value="${esc(o.v)}">${esc(o.label)}</option>`).join('');
+  if (opts.some(o => o.v === keep)) $('#varScope').value = keep;
+  $('#varSuggest').checked = lsGet('nb.varSuggest') !== '0';
+  renderVariants(); $('#varDlg').showModal();
+}
+function renderVariants(){
+  const n = S.notes.get(S.currentId); if (!n) return;
+  VARS.notes = varNotesFor(n, $('#varScope').value); VARS.groups = scanVariants(VARS.notes);
+  let ignN = 0; try { ignN = JSON.parse(localStorage.getItem('nb.varIgnore') || '[]').length; } catch {}
+  $('#varHint').textContent = VARS.groups.length
+    ? `${VARS.notes.length}件のノートで、表記ゆれの候補が ${VARS.groups.length} 組見つかりました。そろえたい表記を選んで「この表記にそろえる」を押すと、範囲内のノートをまとめて書き換えます（あとで元に戻せます）。意図して書き分けているものは「無視」で次から表示しません。`
+    : `${VARS.notes.length}件のノートを調べました。表記ゆれの候補は見つかりませんでした。`;
+  $('#varList').innerHTML = VARS.groups.map((g, i) => {
+    const mine = g.list.some(f => f.notes.has(S.currentId));
+    return `<div class="vg ${mine ? 'cur' : ''}" data-g="${i}"><div class="vk">${esc(VAR_KIND[g.kind])}${mine ? '・このノートにもあります' : ''}</div>
+      <div class="forms">${g.list.map((f, j) => `<label class="form"><input type="radio" name="vg${i}" value="${j}" ${j === 0 ? 'checked' : ''}>${esc(f.surf)} <small>${f.count}回・${f.notes.size}ノート</small></label>`).join('')}</div>
+      <div class="where">${g.list.map((f, j) => `<span>「${esc(f.surf)}」：${[...f.notes].slice(0, 6).map(id => `<button type="button" data-open="${esc(id)}" data-q="${esc(f.surf)}">${esc(S.notes.get(id)?.title || '無題のノート')}</button>`).join('')}${f.notes.size > 6 ? ` ほか${f.notes.size - 6}件` : ''}</span>`).join('')}</div>
+      <div class="acts"><button type="button" class="primary" data-unify="${i}">この表記にそろえる</button><button type="button" data-ignore="${i}">無視</button></div></div>`;
+  }).join('');
+  $('#varFoot').innerHTML = (VARS.undo ? `<span class="hint" style="flex:1 1 100%">${esc(VARS.msg)}</span><button type="button" id="varUndo">今の書き換えを元に戻す</button>` : '')
+    + (ignN ? `<button type="button" id="varUnignore">無視した候補（${ignN}組）をまた表示する</button>` : '');
+}
+// 置き換え（カタカナは前後が別のカタカナにつながっている所は対象外）
+function replaceVariant(root, from, to, kata){
+  const rs = findRangesIn(root, from).filter(r => {
+    if (!kata) return true;
+    const a = r.startContainer.data, i = r.startOffset, j = r.endOffset;
+    return !(i > 0 && KATA_CH.test(a[i - 1])) && !(j < a.length && KATA_CH.test(a[j]));
+  });
+  for (const r of rs.reverse()) { r.deleteContents(); r.insertNode(root.ownerDocument.createTextNode(to)); }
+  return rs.length;
+}
+async function unifyVariant(i){
+  const g = VARS.groups[i]; if (!g) return;
+  const pick = Number($('#varList').querySelector(`input[name="vg${i}"]:checked`)?.value || 0), to = g.list[pick].surf;
+  const froms = g.list.filter((_, j) => j !== pick).map(f => f.surf).sort((a, b) => b.length - a.length);
+  // 長い表記から置き換える（短い表記が長い表記の一部になっている場合の取りこぼしを防ぐ）
+  await flushSave();
+  const kata = g.kind === 'kata', backup = new Map(); let total = 0;
+  const width = WIDTH_GROUPS[g.key], conv = width && (to === width.label[0] ? toHalf : toFull), pat = width && (to === width.label[0] ? width.full : width.half);
+  for (const n of VARS.notes) {
+    const doc = new DOMParser().parseFromString(`<body>${n.body}</body>`, 'text/html');
+    let c = 0, title = n.title;
+    if (width) {   // 全角・半角は文字ごとに変換
+      const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT); let t;
+      while ((t = w.nextNode())) { const k = (t.data.match(pat) || []).length; if (k) { c += k; t.data = t.data.replace(pat, conv); } }
+      title = title.replace(pat, conv);
+    }
+    for (const fr of width ? [] : froms) {
+      c += replaceVariant(doc.body, fr, to, kata);
+      const re = new RegExp((kata ? '(?<![ァ-ヺー])' : '') + fr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + (kata ? '(?![ァ-ヺー])' : ''), 'g');
+      title = title.replace(re, () => to);
+    }
+    if (!c && title === n.title) continue;
+    backup.set(n.id, {title: n.title, body: n.body, text: n.text});
+    doc.body.normalize();
+    Object.assign(n, {title, body: doc.body.innerHTML, text: htmlToText(doc.body.innerHTML), updated: now(), dirty: true});
+    await storeNote(n); total += c;
+  }
+  VARS.undo = backup; VARS.msg = `「${to}」にそろえました（${backup.size}件のノート・${total}か所）`;
+  if (S.currentId && backup.has(S.currentId)) loadIntoEditor(S.notes.get(S.currentId));
+  renderAll(); scheduleSync(); renderVariants(); updateVarBtn();
+  showBanner(VARS.msg, '元に戻す', undoVariant);
+}
+async function undoVariant(){
+  const u = VARS.undo; if (!u) return;
+  for (const [id, b] of u) { const n = S.notes.get(id); if (!n) continue; Object.assign(n, b, {updated: now(), dirty: true}); await storeNote(n); }
+  if (S.currentId && u.has(S.currentId)) loadIntoEditor(S.notes.get(S.currentId));
+  VARS.undo = null; VARS.msg = ''; hideBanner(); renderAll(); scheduleSync(); updateVarBtn(); if ($('#varDlg').open) renderVariants(); toast('元に戻しました');
+}
+$('#varScope').addEventListener('change', renderVariants);
+$('#varList').addEventListener('click', async e => {
+  const u = e.target.closest('[data-unify]'), ig = e.target.closest('[data-ignore]'), op = e.target.closest('[data-open]');
+  if (u) { await unifyVariant(Number(u.dataset.unify)); return; }
+  if (ig) {
+    const g = VARS.groups[Number(ig.dataset.ignore)];
+    let a = []; try { a = JSON.parse(localStorage.getItem('nb.varIgnore') || '[]'); } catch {}
+    a.push(g.key); lsSet('nb.varIgnore', JSON.stringify([...new Set(a)])); renderVariants(); updateVarBtn(); return;
+  }
+  if (op) {
+    $('#varDlg').close();
+    if (op.dataset.open !== S.currentId) await openNote(op.dataset.open);
+    $('#findIn').value = op.dataset.q; openFind(false);
+  }
+});
+$('#varFoot').addEventListener('click', e => { if (e.target.id === 'varUndo') { undoVariant(); return; } if (e.target.id === 'varUnignore') { lsSet('nb.varIgnore', '[]'); renderVariants(); updateVarBtn(); } });
+// サジェスト：開いているノートに、範囲内の他の書き方と食い違う表記があれば、上部に「表記ゆれ」を出す
+let varTimer;
+function updateVarBtn(){
+  clearTimeout(varTimer);
+  varTimer = setTimeout(() => {
+    const n = S.notes.get(S.currentId), b = $('#varBtn');
+    if (!n || n.deleted || lsGet('nb.varSuggest') === '0') { b.hidden = true; return; }
+    const opt = varScopeOptions(n)[0], notes = varNotesFor(n, opt.v);
+    const c = scanVariants(notes).filter(g => g.list.some(f => f.notes.has(n.id))).length;
+    b.hidden = !c; $('#varCount').textContent = c || '';
+    b.title = `表記ゆれの候補 ${c} 組（${opt.label}）`;
+  }, 900);
+}
+$('#varBtn').addEventListener('click', openVariants);
+$('#varSuggest').addEventListener('change', e => { lsSet('nb.varSuggest', e.target.checked ? '1' : '0'); updateVarBtn(); });
 document.addEventListener('keydown', e => {
   if (!(e.ctrlKey || e.metaKey) || e.altKey || !S.currentId || $('#editorWrap').hidden) return;
   const k = e.key.toLowerCase();
@@ -3314,6 +3504,7 @@ addMoreItem({k: 'm-pin', label: 'ピン留めする', ic: 'pin', run: () => $('#
 addMoreItem({k: 'm-unpin', label: 'ピン留めを外す', ic: 'pin', run: () => $('#pinBtn').click(), show: n => isNarrow() && !n.deleted && n.pinned});
 addMoreItem({k: 'toc', label: '目次と文字数', ic: 'list', run: openToc});
 addMoreItem({k: 'find', label: '検索と置換', ic: 'search', run: () => openFind(true)});
+addMoreItem({k: 'variants', label: '表記ゆれチェック', ic: 'check', run: () => openVariants(), show: n => !n.deleted});
 $('#moreBtn').addEventListener('click', async () => {
   const n = S.notes.get(S.currentId); if (!n) return;
   const items = MORE_ITEMS.filter(x => !x.show || x.show(n));
