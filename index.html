@@ -323,6 +323,15 @@ img.lazy:not([data-w]){width:min(100%,var(--pw,480px))}
 #findBar .cnt{font-size:12px;color:var(--mute);min-width:4.5em;text-align:center;font-variant-numeric:tabular-nums}
 #findBar label{font-size:12.5px;display:flex;align-items:center;gap:4px;white-space:nowrap;color:var(--fg)}
 #findBar .grow{flex-basis:100%;height:0}
+::highlight(nb-var){text-decoration:underline wavy #e0a000;text-decoration-thickness:1.5px;text-underline-offset:3px;background:rgba(224,160,0,.08)}
+#varPop{position:absolute;z-index:7;width:min(320px,calc(100% - 12px));background:var(--panel);border:1px solid var(--line);border-left:4px solid #e0a000;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px 12px;font-size:14px;display:flex;flex-direction:column;gap:8px}
+#varPop[hidden]{display:none}
+#varPop .vt{font-size:13px;line-height:1.6}
+#varPop .vt small{color:var(--mute)}
+#varPop .vb{display:flex;flex-direction:column;gap:6px}
+#varPop .vb button{text-align:left;padding:7px 10px;border-radius:8px;border:1px solid var(--line);font-size:13px;color:var(--fg)}
+#varPop .vb button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+#varPop .vb .sub{display:flex;gap:6px}#varPop .vb .sub button{flex:1;text-align:center}
 ::highlight(nb-find){background:#ffe066;color:inherit}
 ::highlight(nb-find-cur){background:#ff9f43;color:#000}
 #editor a.nlink{color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:0 5px;text-decoration:none;cursor:pointer;white-space:nowrap}
@@ -676,6 +685,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
         <div id="backlinks" hidden></div>
         <div id="cmtPop" hidden><div class="ct" id="cmtPopText"></div><div class="cm" id="cmtPopMeta"></div>
           <div class="row"><button type="button" id="cmtPopEdit">編集</button><button type="button" id="cmtPopDel" class="danger">削除</button><button type="button" id="cmtPopClose">閉じる</button></div></div>
+        <div id="varPop" hidden><div class="vt" id="varPopText"></div><div class="vb" id="varPopBtns"></div></div>
       </div>
       <input type="file" id="fileInput" multiple hidden>
     </div>
@@ -1597,7 +1607,7 @@ function loadIntoEditor(n){
   renderNbSelect(n); updateSaveState(n);
   deselectImage(); applyImgSizes(editorEl); hydrate(editorEl);
   updateClaudeBtn(n);
-  histInit(n); hideCmtPop(); updateCmtBtn(); updateVarBtn(); updateCount(); markBrokenLinks(); renderBacklinks(n.id); hideLinkPop(); hideSlash();
+  histInit(n); hideCmtPop(); hideVarPop(); updateCmtBtn(); updateVarBtn(); updateCount(); markBrokenLinks(); renderBacklinks(n.id); hideLinkPop(); hideSlash();
   if (!$('#findBar').hidden) runFind();
 }
 async function openNote(id, {push = true} = {}){
@@ -2250,7 +2260,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {});
 }
-const APP_VERSION = '2026.10.24-1';
+const APP_VERSION = '2026.10.24-2';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2626,7 +2636,7 @@ function applyState(st){
     deselectImage();
     editorEl.innerHTML = st.html; titleEl.value = st.title;
     S.editTags = st.tags.slice(); closeTagInput(false); renderTagChips();
-    curCell = null; applyImgSizes(editorEl); hydrate(editorEl); updateTableBar();
+    curCell = null; applyImgSizes(editorEl); hydrate(editorEl); updateTableBar(); hideVarPop(); updateVarBtn(true);
     if (st.caret != null) { editorEl.focus(); setCaretOffset(st.caret); }
     hideCmtPop(); updateCmtBtn();
     onEdit();
@@ -2774,6 +2784,7 @@ $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
   {d: '2026年10月24日', items: [
+    '表記ゆれのある箇所に、本文の中で黄色の波線を表示。タップすると「ここを〇〇に直す」「このノートの〇か所をまとめて直す」「無視」をその場で選べるように',
     '表記ゆれの知らせを、文字から「！」のアイコン（件数付き）に変更。スマホでも上部に収まるように'
   ]},
   {d: '2026年10月23日', items: [
@@ -3484,18 +3495,96 @@ $('#varList').addEventListener('click', async e => {
 $('#varFoot').addEventListener('click', e => { if (e.target.id === 'varUndo') { undoVariant(); return; } if (e.target.id === 'varUnignore') { lsSet('nb.varIgnore', '[]'); renderVariants(); updateVarBtn(); } });
 // サジェスト：開いているノートに、範囲内の他の書き方と食い違う表記があれば、上部に「表記ゆれ」を出す
 let varTimer;
-function updateVarBtn(){
+function updateVarBtn(now_){
   clearTimeout(varTimer);
   varTimer = setTimeout(() => {
     const n = S.notes.get(S.currentId), b = $('#varBtn');
-    if (!n || n.deleted || lsGet('nb.varSuggest') === '0') { b.hidden = true; return; }
+    if (!n || n.deleted || lsGet('nb.varSuggest') === '0') { b.hidden = true; markVariants([]); return; }
     const opt = varScopeOptions(n)[0], notes = varNotesFor(n, opt.v);
-    const c = scanVariants(notes).filter(g => g.list.some(f => f.notes.has(n.id))).length;
+    const mine = scanVariants(notes).filter(g => g.list.some(f => f.notes.has(n.id))), c = mine.length;
+    markVariants(mine);
     const was = b.hidden; b.hidden = !c; $('#varCount').textContent = c > 9 ? '9+' : (c || '');
     b.title = b.ariaLabel = `表記ゆれの候補 ${c} 組（${opt.label}）`;
     if (c && was) { b.classList.remove('new'); void b.offsetWidth; b.classList.add('new'); }
-  }, 900);
+  }, now_ ? 0 : 900);
 }
+
+// 本文の中の「少ない方の書き方」に波線を引き、タップでその場で直せるようにする
+const VMARK = {items: []};
+function markVariants(groups){
+  VMARK.items = [];
+  if (!hasHL) return;
+  const n = S.notes.get(S.currentId);
+  if (!n || n.deleted || !groups.length) { CSS.highlights.delete('nb-var'); return; }
+  for (const g of groups) {
+    const major = g.list[0];
+    for (const f of g.list.slice(1)) {
+      if (!f.notes.has(n.id)) continue;
+      const width = WIDTH_GROUPS[g.key];
+      if (width) {
+        const pat = f.surf === width.label[1] ? width.full : width.half;
+        const w = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT); let t;
+        while ((t = w.nextNode())) for (const m of t.data.matchAll(new RegExp(pat.source + '+', 'g'))) {
+          const r = document.createRange(); r.setStart(t, m.index); r.setEnd(t, m.index + m[0].length);
+          VMARK.items.push({r, g, from: m[0], to: f.surf === width.label[1] ? toHalf(m[0]) : toFull(m[0]), major, form: f});
+        }
+        continue;
+      }
+      for (const r of findRangesIn(editorEl, f.surf)) {
+        if (g.kind === 'kata') { const a = r.startContainer.data, i = r.startOffset, j = r.endOffset; if ((i > 0 && KATA_CH.test(a[i - 1])) || (j < a.length && KATA_CH.test(a[j]))) continue; }
+        VMARK.items.push({r, g, from: f.surf, to: major.surf, major, form: f});
+      }
+    }
+  }
+  if (VMARK.items.length) CSS.highlights.set('nb-var', new Highlight(...VMARK.items.map(x => x.r))); else CSS.highlights.delete('nb-var');
+}
+function hideVarPop(){ $('#varPop').hidden = true; }
+function showVarPop(it){
+  const pop = $('#varPop'), body = $('#editorWrap .ed-body'), g = it.g;
+  const width = WIDTH_GROUPS[g.key];
+  $('#varPopText').innerHTML = width
+    ? `この範囲のノートでは<b>${esc(it.major.surf)}</b>が多く使われています。<br><small>${esc(it.major.surf)} ${it.major.count}回 ／ ${esc(it.form.surf)} ${it.form.count}回</small>`
+    : `「${esc(it.from)}」は、この範囲のノートでは「<b>${esc(it.to)}</b>」と書くことが多いようです。<br><small>${g.list.map(f => `${esc(f.surf)} ${f.count}回`).join(' ／ ')}</small>`;
+  const ro = !editorEl.isContentEditable, mine = VMARK.items.filter(x => x.g === g && x.from === it.from || (width && x.g === g)).length;
+  $('#varPopBtns').innerHTML = ro ? '' : `<button type="button" class="primary" data-va="one">ここを「${esc(it.to)}」に直す</button>`
+    + (mine > 1 ? `<button type="button" data-va="note">このノートの${mine}か所をまとめて直す</button>` : '')
+    + `<div class="sub"><button type="button" data-va="all">一覧で確認</button><button type="button" data-va="ign">無視</button><button type="button" data-va="close">閉じる</button></div>`;
+  VMARK.cur = it;
+  pop.hidden = false;
+  const br = body.getBoundingClientRect(), r = it.r.getBoundingClientRect();
+  const left = Math.max(6, Math.min(r.left - br.left + body.scrollLeft, body.clientWidth - pop.offsetWidth - 6));
+  pop.style.left = left + 'px'; pop.style.top = (r.bottom - br.top + body.scrollTop + 6) + 'px';
+}
+function varAt(x, y){
+  if (!VMARK.items.length) return null;
+  let node, off;
+  if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(x, y); if (p) { node = p.offsetNode; off = p.offset; } }
+  else if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); if (r) { node = r.startContainer; off = r.startOffset; } }
+  if (!node) return null;
+  return VMARK.items.find(it => { try { if (it.r.collapsed) return false; const b = it.r.getBoundingClientRect(); return it.r.isPointInRange(node, off) && x >= b.left - 2 && x <= b.right + 2 && y >= b.top - 2 && y <= b.bottom + 2; } catch { return false; } });
+}
+editorEl.addEventListener('click', e => {
+  if ($('#varPop').contains(e.target)) return;
+  const it = varAt(e.clientX, e.clientY);
+  if (it) showVarPop(it); else hideVarPop();
+});
+$('#varPop').addEventListener('click', async e => {
+  const b = e.target.closest('[data-va]'); if (!b) return;
+  const it = VMARK.cur; if (!it) return;
+  const k = b.dataset.va; hideVarPop();
+  if (k === 'close') return;
+  if (k === 'all') { openVariants(); return; }
+  if (k === 'ign') {
+    let a = []; try { a = JSON.parse(localStorage.getItem('nb.varIgnore') || '[]'); } catch {}
+    a.push(it.g.key); lsSet('nb.varIgnore', JSON.stringify([...new Set(a)])); updateVarBtn(true); toast('この表記ゆれは今後表示しません（表記ゆれチェックの画面で戻せます）'); return;
+  }
+  const targets = k === 'one' ? [it] : VMARK.items.filter(x => x.g === it.g && (WIDTH_GROUPS[it.g.key] || x.from === it.from));
+  histBefore();
+  for (const x of [...targets].reverse()) { if (x.r.collapsed) continue; x.r.deleteContents(); x.r.insertNode(document.createTextNode(x.to)); }
+  editorEl.normalize();
+  onEdit(k === 'one' ? '表記をそろえる' : `表記をそろえる（${targets.length}か所）`);
+  await flushSave(); updateVarBtn(true);
+});
 $('#varBtn').addEventListener('click', openVariants);
 $('#varSuggest').addEventListener('change', e => { lsSet('nb.varSuggest', e.target.checked ? '1' : '0'); updateVarBtn(); });
 document.addEventListener('keydown', e => {
