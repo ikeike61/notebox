@@ -131,6 +131,7 @@ body[data-solo] .ed-head{padding-top:10px}
 #soloClose{display:inline-flex;align-items:center;gap:5px}
 #soloClose .ic,#bannerClose .ic,#findClose .ic{width:15px;height:15px}
 .dlg .dlg-x .ic{width:17px;height:17px}
+:root{--ic-clip:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round' d='M16.5 7.5v9a4.5 4.5 0 0 1-9 0V6a3 3 0 0 1 6 0v10a1.5 1.5 0 0 1-3 0V8'/%3E%3C/svg%3E")}
 :root{--ic-doc:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M5.5 2H13v6.5h7v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5v-17A1.5 1.5 0 0 1 5.5 2zM7.5 12v1.8h9V12zm0 3.8v1.8h9v-1.8z'/%3E%3Cpath d='M14.6 2.4l5 5h-5z'/%3E%3C/svg%3E")}
 @keyframes popin{0%{opacity:0;transform:scale(.92) translateY(8px)}60%{opacity:1;transform:scale(1.02)}100%{opacity:1;transform:none}}
 @keyframes edfade{from{opacity:.25;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -428,6 +429,7 @@ img.lazy:not([data-w]){width:min(100%,var(--pw,480px))}
 #cmtList li:hover{background:var(--sel)}
 #cmtList .q{font-size:12.5px;color:var(--mute);border-left:3px solid #d99a00;padding-left:8px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #cmtList .c{font-size:14px;white-space:pre-wrap;word-break:break-word}
+a.att::before{content:"";display:inline-block;width:1em;height:1em;margin-right:.3em;vertical-align:-.15em;background:currentColor;opacity:.75;-webkit-mask:var(--ic-clip) center/contain no-repeat;mask:var(--ic-clip) center/contain no-repeat}
 #editor a.att{display:inline-block;background:var(--sel);border:1px solid var(--line);border-radius:7px;padding:2px 10px;color:var(--fg);text-decoration:none;font-size:14px;cursor:pointer;margin:2px 0}
 .readonly .toolbar{display:none}
 
@@ -659,6 +661,10 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
     <p class="hint">「バックアップ」は添付ファイルも含めた全ノートのzipで、左メニューの「ノートの取り込み」でそのまま戻せます。「Markdown」は他のアプリでも読める形式です。</p>
     <div class="row"><button type="button" id="backupBtn">全ノートをバックアップ（zip）</button><button type="button" id="mdAllBtn">全ノートをMarkdownで書き出し</button></div>
     <p id="exportInfo" class="hint"></p>
+    <h4>容量の整理</h4>
+    <p class="hint">削除したノートなどで、どのノートからも使われなくなった画像・添付ファイルを探して、Googleドライブのゴミ箱に移します（30日間は復元できます）。この端末に残っている不要な画像データも消します。ゴミ箱にあるノートの画像は残します。</p>
+    <div class="row"><button type="button" id="cleanAttBtn">使われていない添付ファイルを整理</button></div>
+    <p id="cleanInfo" class="hint"></p>
     <h4>Webクリップ</h4>
     <p class="hint"><b>ブックマークレット</b>：ブラウザのブックマークのURL欄にこれを貼り付けて保存。記事を開いてそのブックマークを選ぶとクリップされます（文章を選択してから使うと選択部分だけ）。</p>
     <textarea id="bmCode" readonly></textarea>
@@ -843,7 +849,13 @@ function sanitize(html){
       }
     }
   })(doc.body);
+  stripAttEmoji(doc.body);
   return doc.body.innerHTML;
+}
+// 添付ファイルの見出しに付いていた絵文字（📎）は保存しない（アイコンは表示のときに付ける）
+const ATT_EMOJI = /^\s*📎\uFE0F?\s*/;
+function stripAttEmoji(root){
+  root.querySelectorAll('a.att').forEach(a => { const t = a.firstChild; if (t && t.nodeType === 3 && ATT_EMOJI.test(t.data)) t.data = t.data.replace(ATT_EMOJI, ''); });
 }
 function htmlToText(html){
   const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
@@ -886,6 +898,7 @@ const db = {
     });
   },
   get(s, k){ return this._tx(s, 'readonly', st => st.get(k)); },
+  keys(s){ return this._tx(s, 'readonly', st => st.getAllKeys()); },
   async put(s, v, k){
     const r = await this._tx(s, 'readwrite', st => k === undefined ? st.put(v) : st.put(v, k));
     if (s === 'notes') bcPost({t: 'note', n: v}); else if (s === 'kv' && k === 'notebooks') bcPost({t: 'nbs'});
@@ -1221,18 +1234,32 @@ async function syncNotes(f, inc){
     if (inc.gone.size) for (const l of [...S.notes.values()]) if (l.fileId && inc.gone.has(l.fileId)) await dropGoneNote(l);
   } else {
     const remote = await listFolder(f.root, 'note');
-    const seen = new Set(), uniq = [];
-    for (const r of remote){
-      const id = r.appProperties?.noteId;
-      if (!id || seen.has(id)) continue;
-      seen.add(id); uniq.push(r);
+    const byId = new Map();
+    for (const r of remote){ const id = r.appProperties?.noteId; if (id) (byId.get(id) || byId.set(id, []).get(id)).push(r); }
+    const seen = new Set(byId.keys()), uniq = [], extra = [];
+    for (const [id, rs] of byId) {   // 同じノートのファイルが2つ以上あれば、1つだけ残して他はゴミ箱へ
+      const l = S.notes.get(id);
+      const keep = rs.find(r => r.id === l?.fileId) || rs.reduce((a, b) => (Number(b.appProperties.updated) || 0) > (Number(a.appProperties.updated) || 0) ? b : a);
+      uniq.push(keep); extra.push(...rs.filter(r => r !== keep));
     }
     await applyRemoteNotes(uniq);
+    for (const r of extra) {
+      try { await gfetch(`${API}/files/${r.id}?fields=id`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({trashed: true})}); }
+      catch (e) { if (e.auth) throw e; }
+    }
     for (const l of [...S.notes.values()]){
       if (!l.fileId || seen.has(l.id)) continue;
       if (await isGone(l.fileId)) await dropGoneNote(l);
     }
   }
+}
+// Claude修正版のノートはIDが端末によらず同じになるので、送る前にドライブにすでにあるか確かめる（二重に作らない）
+async function adoptExisting(f, l){
+  const q = `'${f.root}' in parents and trashed=false and appProperties has { key='noteId' and value='${l.id}' }`;
+  const r = await gjson(`${API}/files?q=${encodeURIComponent(q)}&fields=files(id,appProperties)`);
+  const hit = r.files?.[0]; if (!hit) return false;
+  l.fileId = hit.id; l.syncedAt = Number(hit.appProperties?.updated) || 0; l.dirty = false;
+  await storeNote(l); return true;
 }
 async function uploadDirtyNotes(f){
   const pendingAtt = new Set(((await db.get('kv', 'pendingAtt')) || []).map(a => a.id));
@@ -1240,6 +1267,7 @@ async function uploadDirtyNotes(f){
   let i = 0;
   for (const l of todo){
     setProgress('送信', ++i, todo.length);
+    if (!l.fileId && l.id.startsWith('cr-') && await adoptExisting(f, l)) continue;   // 別の端末が同じClaude修正版をすでに送っていた
     const snap = serialize(l);
     S.log?.sent.push(l.deleted ? `${l.title || '無題のノート'}（ゴミ箱へ）` : (l.title || '無題のノート'));
     const fid = await uploadFile({fileId: l.fileId, name: `note-${l.id}.json`, mime: 'application/json',
@@ -1424,7 +1452,7 @@ async function insertAttachment(file){
   if (/^image\/(jpeg|png|gif|webp|svg\+xml|avif|bmp)$/.test(mime))
     document.execCommand('insertHTML', false, `<img data-att="${id}" alt="${esc(name)}"><br>`);
   else
-    document.execCommand('insertHTML', false, `<a class="att" data-att="${id}" data-name="${esc(name)}" contenteditable="false">📎 ${esc(name)}</a>&nbsp;`);
+    document.execCommand('insertHTML', false, `<a class="att" data-att="${id}" data-name="${esc(name)}" contenteditable="false">${esc(name)}</a>&nbsp;`);
   await hydrate($('#editor'));
   onEdit('画像・ファイルの添付'); scheduleSync(1500);
 }
@@ -2145,7 +2173,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {});
 }
-const APP_VERSION = '2026.10.23-6';
+const APP_VERSION = '2026.10.23-7';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2643,6 +2671,9 @@ $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
   {d: '2026年10月23日', items: [
+    '設定に「容量の整理」を追加：どのノートからも使われていない画像・添付ファイルをドライブのゴミ箱へ移し、端末の不要なデータも削除',
+    '同じ「Claude修正版」のノートが、複数の端末からドライブに二重に作られないように。重複していたファイルは全体の同期で1つにまとめる',
+    '添付ファイルの見出しの絵文字（📎）をやめて、他と同じアイコンで表示',
     'ボタンのアイコンを、絵文字からピクトグラム風のアイコンに差し替え',
     '左上の「NoteBox」を押すと、バージョン情報と更新履歴を表示（「最新版に更新」もこちらへ移動）',
     '選択モードの丸が、コンパクト表示・カード表示でタイトルに重なる問題を修正',
@@ -3346,7 +3377,7 @@ $('#verList').addEventListener('click', async e => {
   try {
     const data = await (await gfetch(`${API}/files/${n.fileId}/revisions/${v.id}?alt=media`)).json();
     VER.data = normalizeNote(data);
-    $('#verPrev').innerHTML = `<h4>${esc(VER.data.title || '無題のノート')}</h4>` + VER.data.body;
+    $('#verPrev').innerHTML = `<h4>${esc(VER.data.title || '無題のノート')}</h4>` + sanitize(VER.data.body);
     applyImgSizes($('#verPrev')); hydrate($('#verPrev'));
     $('#verRestore').disabled = false;
   } catch (err) { $('#verPrev').textContent = '読み込めませんでした：' + err.message; }
@@ -3393,7 +3424,7 @@ function htmlToMarkdown(html, attPath){
     if (t === 'MARK') return `==${inner()}==`;
     if (t === 'CODE') return '`' + c.textContent + '`';
     if (t === 'IMG') { const id = c.dataset.att, src = id ? attPath(id, c.getAttribute('alt')) : c.getAttribute('src'); return src ? `![${c.getAttribute('alt') || ''}](${encodeURI(src)})` : ''; }
-    if (t === 'A' && c.classList.contains('att')) return `[📎 ${c.dataset.name || ''}](${encodeURI(attPath(c.dataset.att, c.dataset.name))})`;
+    if (t === 'A' && c.classList.contains('att')) return `[添付：${c.dataset.name || ''}](${encodeURI(attPath(c.dataset.att, c.dataset.name))})`;
     if (t === 'A' && c.classList.contains('nlink')) { const n = S.notes.get(c.dataset.note); return `[[${n ? n.title : c.textContent}]]`; }
     if (t === 'A' && c.getAttribute('href')) return `[${inner()}](${c.getAttribute('href')})`;
     if (t === 'SPAN' && c.classList.contains('cmt')) {
@@ -3531,6 +3562,52 @@ async function markdownAll(){
   } catch (e) { say('書き出せませんでした：' + e.message); }
 }
 $('#backupBtn').addEventListener('click', backupAll);
+/* ---------------- 使われていない添付ファイルの整理 ---------------- */
+const ATT_GRACE_MS = 3 * 86400e3;   // 作られて3日以内のものは対象外（別の端末でノートが送られる前の添付を消さないため）
+function referencedAtts(){
+  const ref = new Set();
+  for (const n of S.notes.values()) for (const m of (n.body || '').matchAll(/data-att="([^"]+)"/g)) ref.add(m[1]);
+  return ref;
+}
+async function cleanupAttachments(){
+  const info = $('#cleanInfo'), btn = $('#cleanAttBtn');
+  if (!navigator.onLine) { info.textContent = 'オフラインのため整理できません'; return; }
+  btn.disabled = true;
+  try {
+    info.textContent = 'まず全体を同期しています…';
+    await sync({interactive: true, full: true});
+    if (S.error || !hasToken()) { info.textContent = '同期できなかったため中止しました'; return; }
+    info.textContent = 'ドライブの添付ファイルを確認しています…';
+    const f = await ensureFolders(), files = []; let pt = '';
+    do {
+      const q = `'${f.att}' in parents and trashed=false`;
+      const r = await gjson(`${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,size,createdTime)&pageSize=1000${pt ? '&pageToken=' + encodeURIComponent(pt) : ''}`);
+      files.push(...(r.files || [])); pt = r.nextPageToken;
+    } while (pt);
+    const ref = referencedAtts();
+    for (const a of (await db.get('kv', 'pendingAtt')) || []) ref.add(a.id);
+    const t = now();
+    const drop = files.filter(x => !ref.has(x.id) && t - (Date.parse(x.createdTime) || t) > ATT_GRACE_MS);
+    const localKeys = (await db.keys('blobs')).map(String).filter(k => !ref.has(k.replace(/@[dt]$/, '')));
+    const bytes = drop.reduce((a, x) => a + (Number(x.size) || 0), 0), mb = bytes >= 104858 ? (bytes / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(bytes / 1024)) + 'KB';
+    if (!drop.length && !localKeys.length) { info.textContent = `使われていない添付ファイルはありませんでした（ドライブの添付 ${files.length} 件を確認）`; return; }
+    const msg = (drop.length ? `どのノートからも使われていない添付ファイルが ${drop.length} 件（${mb}）あります。\nGoogleドライブのゴミ箱に移しますか？（30日間は復元できます）\n` : '')
+      + (localKeys.length ? `この端末に残っている不要な画像データ ${localKeys.length} 件も消します。\n` : '')
+      + '\n※「過去の版」で古い版を復元したとき、その版にだけあった画像は表示されなくなります。';
+    if (!confirm(msg)) { info.textContent = '整理を取りやめました'; return; }
+    let i = 0, fail = 0;
+    for (const x of drop) {
+      info.textContent = `ドライブのゴミ箱に移しています… ${++i}/${drop.length}`;
+      try { await gfetch(`${API}/files/${x.id}?fields=id`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({trashed: true})}); }
+      catch (e) { if (e.auth) throw e; if (e.status !== 404) fail++; }
+    }
+    for (const k of localKeys) { await db.del('blobs', k); urlCache.delete(k); }
+    const est = await navigator.storage?.estimate?.().catch(() => null);
+    info.textContent = `整理しました：ドライブ ${drop.length - fail} 件（${mb}）をゴミ箱へ、端末の画像データ ${localKeys.length} 件を削除` + (fail ? `（${fail} 件は移せませんでした）` : '') + (est ? `。この端末の使用量 ${(est.usage / 1048576).toFixed(1)}MB` : '');
+  } catch (e) { console.error(e); info.textContent = '整理の途中でエラーになりました：' + e.message; }
+  finally { btn.disabled = false; }
+}
+$('#cleanAttBtn').addEventListener('click', cleanupAttachments);
 $('#mdAllBtn').addEventListener('click', markdownAll);
 
 /* ---------------- 縦書きで読む ---------------- */
@@ -4318,6 +4395,10 @@ addMoreItem({k: 'm-purge', label: '完全に削除', ic: 'trash', danger: true, 
   try { await db.open(); }
   catch (e) { alert('この端末のブラウザではデータを保存できません（プライベートモード？）'); return; }
   for (const n of await db.all('notes')) S.notes.set(n.id, n);
+  if (!(await db.get('kv', 'mig-att1'))) {   // 添付の見出しの絵文字を外す（端末内だけ。次に編集したときにドライブにも反映）
+    for (const n of S.notes.values()) if (n.body.includes('📎')) { const b = sanitize(n.body); if (b !== n.body) { n.body = b; n.text = htmlToText(b); await db._tx('notes', 'readwrite', st => st.put(n)); } }
+    await db.put('kv', 1, 'mig-att1');
+  }
   S.notebooks = (await db.get('kv', 'notebooks')) || [];
   S.lastSyncAt = (await db.get('kv', 'lastSync')) || 0;
   try { const t = JSON.parse(localStorage.getItem('nb.token') || 'null'); if (t && t.e > now()) { S.token = t.t; S.tokenExp = t.e; } } catch {}
