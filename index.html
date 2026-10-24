@@ -2000,11 +2000,113 @@ editorEl.addEventListener('click', e => {
     if (e.clientX - li.getBoundingClientRect().left < 26) { histBefore(); li.classList.toggle('done'); onEdit(li.classList.contains('done') ? 'チェックを付ける' : 'チェックを外す'); }
   }
 });
+/* ---------------- コピー・貼り付け（見出しなどの書式を保つ） ---------------- */
+const NB_CLIP = '<!--notebox-copy-->';
+// 選択範囲をアプリ内の形のHTMLにする（1つの段落・見出しを丸ごと選んだときは、その見出しの形も含める）
+function selectionHTML(r){
+  const box = document.createElement('div');
+  box.appendChild(r.cloneContents());
+  const top = n => { let el = n.nodeType === 1 ? n : n.parentElement; while (el && el.parentElement !== editorEl) el = el.parentElement; return el; };
+  const a = top(r.startContainer), b = top(r.endContainer);
+  if (a && a === b && /^(H[1-4]|BLOCKQUOTE|PRE)$/.test(a.tagName) && box.textContent.trim() && box.textContent.trim() === a.textContent.trim()) {
+    const w = a.cloneNode(false); w.append(...box.childNodes); box.replaceChildren(w);
+  }
+  box.querySelectorAll('img[data-att]').forEach(i => i.removeAttribute('src'));
+  box.querySelectorAll('.cur,.sel,.tsel,.flash,.nl-broken,.flash-h,.fold,.fh,.lazy,.missing').forEach(x => { x.classList.remove('cur', 'sel', 'tsel', 'flash', 'nl-broken', 'flash-h', 'fold', 'fh', 'lazy', 'missing'); if (!x.className) x.removeAttribute('class'); });
+  box.querySelectorAll('[data-fn]').forEach(x => x.removeAttribute('data-fn'));
+  box.querySelectorAll('[style]').forEach(x => x.removeAttribute('style'));
+  return box.innerHTML;
+}
+function onCopy(e, cut){
+  const sel = getSelection(); if (!sel.rangeCount || sel.isCollapsed) return;
+  const r = sel.getRangeAt(0); if (!editorEl.contains(r.commonAncestorContainer)) return;
+  if (editorEl.querySelector('table.tsel')) return;   // 表をまるごと選んでいるときは、表のコピーに任せる
+  e.preventDefault();
+  e.clipboardData.setData('text/html', NB_CLIP + selectionHTML(r));
+  e.clipboardData.setData('text/plain', sel.toString());
+  if (cut && editorEl.isContentEditable) { histBefore(); r.deleteContents(); editorEl.normalize(); onEdit('切り取り'); }
+}
+editorEl.addEventListener('copy', e => onCopy(e, false));
+editorEl.addEventListener('cut', e => onCopy(e, true));
+// 他のアプリやWebページから：見出し・箇条書き・太字・リンク・引用などは残し、画像・色・余計な飾りは外す
+function cleanExternalHTML(html){
+  const doc = new DOMParser().parseFromString(html, 'text/html'), b = doc.body;
+  b.querySelectorAll('img,picture,video,audio,figure>figcaption').forEach(x => x.remove());
+  b.querySelectorAll('h5,h6').forEach(h => { const n = doc.createElement('h4'); n.append(...h.childNodes); h.replaceWith(n); });
+  // Googleドキュメントなどの「太字は span の style」を太字のタグに直す
+  b.querySelectorAll('span[style]').forEach(sp => {
+    const st = sp.getAttribute('style') || ''; let el = sp;
+    if (/font-weight:\s*(bold|[6-9]00)/.test(st)) { const x = doc.createElement('b'); el.replaceWith(x); x.append(el); }
+    if (/font-style:\s*italic/.test(st)) { const x = doc.createElement('i'); sp.replaceWith(x); x.append(sp); }
+  });
+  b.querySelectorAll('a:not([href^="http"])').forEach(a => a.replaceWith(...a.childNodes));
+  b.querySelectorAll('[class]').forEach(x => x.removeAttribute('class'));
+  // 段落や見出しを包んでいる太字・spanなど（Googleドキュメントの貼り付けで付く外側の<b>など）はほどく
+  const BLK = 'p,div,h1,h2,h3,h4,ul,ol,li,table,blockquote,pre,hr';
+  for (const el of [...b.querySelectorAll('b,strong,i,em,u,span,font,a,s,del,mark')].reverse()) if (el.querySelector(BLK) || /font-weight:\s*(normal|400)/.test(el.getAttribute('style') || '') && el.tagName === 'B') el.replaceWith(...el.childNodes);
+  b.querySelectorAll('span,font').forEach(x => x.replaceWith(...x.childNodes));
+  b.querySelectorAll('div').forEach(d => { if (![...d.children].some(c => BLOCK_RE.test(c.tagName))) { const p = doc.createElement('p'); p.append(...d.childNodes); d.replaceWith(p); } else d.replaceWith(...d.childNodes); });
+  return sanitize(b.innerHTML);
+}
+// HTMLをカーソルの位置に差し込む（段落の途中なら段落を分けて、見出しなどをその間に入れる）
+function insertRichHTML(html){
+  const sel = getSelection(); if (!sel.rangeCount) return false;
+  const r = sel.getRangeAt(0); if (!editorEl.contains(r.commonAncestorContainer) && r.commonAncestorContainer !== editorEl) return false;
+  r.deleteContents();
+  const tpl = document.createElement('template'); tpl.innerHTML = html;
+  // 一番外側の文字や太字などは段落にまとめる
+  const nodes = [], frag = tpl.content; let run = null;
+  for (const n of [...frag.childNodes]) {
+    if (n.nodeType === 1 && BLOCK_RE.test(n.tagName)) { run = null; nodes.push(n); continue; }
+    if (n.nodeType === 3 && !n.data.trim() && !run) continue;
+    if (!run) { run = document.createElement('p'); nodes.push(run); }
+    run.appendChild(n);
+  }
+  if (!nodes.length) return true;
+  const ids = new Map();   // コメントは別のものとして扱う（元のコメントとつながらないように）
+  nodes.forEach(n => n.querySelectorAll?.('[data-cid]').forEach(c => { if (!ids.has(c.dataset.cid)) ids.set(c.dataset.cid, 'c' + uid().slice(0, 8)); c.dataset.cid = ids.get(c.dataset.cid); }));
+  const allInline = nodes.length === 1 && nodes[0].tagName === 'P' && nodes[0] === run;
+  let last;
+  if (allInline) {   // 段落の中に文字だけを入れる
+    const kids = [...nodes[0].childNodes]; last = kids[kids.length - 1];
+    const f = document.createDocumentFragment(); f.append(...kids); r.insertNode(f);
+  } else {
+    let blk = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+    if (blk === editorEl) {
+      const ref = editorEl.childNodes[r.startOffset] || null;
+      nodes.forEach(n => editorEl.insertBefore(n, ref)); last = nodes[nodes.length - 1];
+    } else {
+      while (blk && blk.parentElement !== editorEl) blk = blk.parentElement;
+      if (!blk) return false;
+      const tailR = document.createRange(); tailR.setStart(r.startContainer, r.startOffset); tailR.setEndAfter(blk.lastChild || blk);
+      const tail = tailR.extractContents(), tailBlk = blk.cloneNode(false); tailBlk.append(...tail.childNodes);
+      let ref = blk; for (const n of nodes) { ref.after(n); ref = n; }
+      last = ref;
+      if (tailBlk.textContent.trim() || tailBlk.querySelector('img,a.att')) ref.after(tailBlk);
+      if (!blk.textContent.trim() && !blk.querySelector('img,a.att,table')) blk.remove();
+    }
+  }
+  const c = document.createRange();
+  if (last) { if (last.nodeType === 3) c.setStart(last, last.length); else { c.selectNodeContents(last); c.collapse(false); } }
+  sel.removeAllRanges(); sel.addRange(c);
+  return true;
+}
 editorEl.addEventListener('paste', async e => {
   const files = [...(e.clipboardData?.files || [])];
   if (files.length) { e.preventDefault(); for (const f of files) await insertAttachment(f); return; }
   const html = e.clipboardData?.getData('text/html') || '';
+  const inCell = !!closestInEditor('td,th');
+  if (html.includes(NB_CLIP) && !(inCell && /<table[\s>]/i.test(html))) {   // NoteBox の中でコピーしたもの：書式をそのまま
+    e.preventDefault(); histBefore();
+    if (insertRichHTML(sanitize(html.replace(NB_CLIP, '')))) { editorEl.normalize(); applyImgSizes(editorEl); hydrate(editorEl); markBrokenLinks(); updateCmtBtn(); onEdit('貼り付け'); }
+    return;
+  }
   if (/<table[\s>]/i.test(html)) { e.preventDefault(); histBefore(); pasteTables(html); return; }
+  if (html && !inCell && /<(h[1-6]|ul|ol|blockquote|b|strong|em|i|a|pre)[\s>]/i.test(html) || /font-weight:\s*(bold|[6-9]00)/.test(html)) {   // 書式のある文章
+    e.preventDefault(); histBefore();
+    if (insertRichHTML(cleanExternalHTML(html))) { editorEl.normalize(); onEdit('貼り付け'); }
+    return;
+  }
   const text = e.clipboardData?.getData('text/plain');
   if (text != null) { e.preventDefault(); histBefore(); document.execCommand('insertText', false, text); onEdit('貼り付け'); }
 });
@@ -2280,7 +2382,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {}); renderAbk().catch(() => {});
 }
-const APP_VERSION = '2026.10.24-4';
+const APP_VERSION = '2026.10.24-5';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2804,6 +2906,7 @@ $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
   {d: '2026年10月24日', items: [
+    'コピー・貼り付けで、見出し・箇条書き・チェックリスト・太字・引用・表・画像・コメントなどの書式を保つように（アプリ内のコピー）。他のアプリやWebページからの貼り付けも、見出し・箇条書き・太字・リンクは残す',
     '全画面表示で、ノートの横幅が画面いっぱいに広がるように（以前は最大960pxで止まっていた）',
     '見出しの折りたたみ：見出しの左の▼で、その見出しの下を畳めるように（状態は端末ごとに記憶。「⋯」からすべて畳む・開くも）',
     'ドライブへの自動バックアップ：同期のあと、決めた間隔（既定は毎週）でノートのバックアップを「NoteBox/バックアップ」に保存。古いものは残す数を超えた分だけ整理',
