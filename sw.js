@@ -1,5 +1,5 @@
 // オフライン用：アプリ本体をキャッシュ（Googleへの通信はキャッシュしない）
-const CACHE = 'notebox-v35';
+const CACHE = 'notebox-v36';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './maskable-512.png'];
 
 self.addEventListener('install', e => {

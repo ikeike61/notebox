@@ -40,7 +40,7 @@ body.resizing{cursor:col-resize;user-select:none}
 body.resizing iframe,body.resizing #editor{pointer-events:none}
 body[data-full] #sidebar,body[data-full] #listPane,body[data-full] .split{display:none}
 body[data-full] #app{grid-template-columns:minmax(0,1fr)}
-body[data-full] .ed-body{max-width:960px;width:100%;margin:0 auto}
+body[data-full] .ed-body{padding:24px 48px 80px}
 #fullBtn,#winBtn{color:var(--mute)}#fullBtn:hover,#winBtn:hover{color:var(--fg)}
 body[data-solo] #sidebar,body[data-solo] #listPane,body[data-solo] .split,body[data-solo] #fullBtn,body[data-solo] #winBtn,body[data-solo] #backBtn{display:none!important}
 body[data-solo] #app{grid-template-columns:minmax(0,1fr)!important}
@@ -2280,7 +2280,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {}); renderAbk().catch(() => {});
 }
-const APP_VERSION = '2026.10.24-3';
+const APP_VERSION = '2026.10.24-4';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2804,6 +2804,7 @@ $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
   {d: '2026年10月24日', items: [
+    '全画面表示で、ノートの横幅が画面いっぱいに広がるように（以前は最大960pxで止まっていた）',
     '見出しの折りたたみ：見出しの左の▼で、その見出しの下を畳めるように（状態は端末ごとに記憶。「⋯」からすべて畳む・開くも）',
     'ドライブへの自動バックアップ：同期のあと、決めた間隔（既定は毎週）でノートのバックアップを「NoteBox/バックアップ」に保存。古いものは残す数を超えた分だけ整理',
     '表記ゆれのある箇所に、本文の中で黄色の波線を表示。タップすると「ここを〇〇に直す」「このノートの〇か所をまとめて直す」「無視」をその場で選べるように',
