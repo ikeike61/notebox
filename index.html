@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#1f2a27">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; img-src 'self' https: data: blob:; media-src 'self' data: blob:; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{
@@ -1564,7 +1565,9 @@ async function insertAttachment(file){
 async function openAttachment(a){
   const blob = await getAttBlob(a.dataset.att).catch(() => null);
   if (!blob) { toast('オンラインでGoogleに接続すると開けます'); return; }
-  const u = URL.createObjectURL(blob);
+  // HTMLやSVGなどは、ブラウザがそのまま開くとアプリと同じ権限で中のスクリプトが動くため、ダウンロード用の種類にして渡す
+  const safe = /^(image\/(jpeg|png|gif|webp|avif|bmp)|application\/pdf|text\/plain|audio\/[\w.+-]+|video\/[\w.+-]+)$/.test(blob.type) ? blob : new Blob([blob], {type: 'application/octet-stream'});
+  const u = URL.createObjectURL(safe);
   const link = document.createElement('a'); link.href = u; link.download = a.dataset.name || 'file'; link.target = '_blank';
   document.body.appendChild(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(u), 60000);
@@ -2345,7 +2348,7 @@ function renderList(){
     const cls = `note-item ${n.id === S.currentId && !S.selMode ? 'active' : ''} ${S.selected.has(n.id) ? 'checked' : ''}${pop.has(n.id) ? ` pop" style="--d:${pop.get(n.id)}ms` : ''}`;
     if (view === 'card') {
       const m = n.body.match(/<img[^>]*data-att="([^"]+)"/) || n.body.match(/<img[^>]*src="(https?:[^"]+)"/);
-      const th = m ? (m[1].startsWith('http') ? `<div class="ni-thumb" style="background-image:url('${esc(m[1])}')"></div>` : `<div class="ni-thumb" data-thumb="${esc(m[1])}"></div>`) : '';
+      const th = m ? (m[1].startsWith('http') ? `<div class="ni-thumb" style="background-image:url(${esc(JSON.stringify(m[1]))})"></div>` : `<div class="ni-thumb" data-thumb="${esc(m[1])}"></div>`) : '';
       return `<li class="${cls}" data-id="${esc(n.id)}">${th}<div class="ni-body">${title}${snip}${meta}</div></li>`;
     }
     if (view === 'compact') return `<li class="${cls}" data-id="${esc(n.id)}"><div class="ni-row">${title}${meta}</div></li>`;
@@ -2382,7 +2385,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {}); renderAbk().catch(() => {});
 }
-const APP_VERSION = '2026.10.24-5';
+const APP_VERSION = '2026.10.25-1';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2508,16 +2511,18 @@ function readIncomingClip(){
   return null;
 }
 async function saveClip(c){
-  let site = c.site || '';
-  try { if (!site && c.url) site = new URL(c.url).hostname; } catch {}
+  const str = v => typeof v === 'string' ? v : '';   // URLから届く内容は形が崩れていることがある
+  const url = str(c.url);
+  let site = str(c.site);
+  try { if (!site && url) site = new URL(url).hostname; } catch {}
   const d = new Date();
-  const head = c.url ? `<p>出典：<a href="${esc(c.url)}">${esc(site || c.url)}</a>　${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} クリップ</p><hr>` : '';
+  const head = url ? `<p>出典：<a href="${esc(url)}">${esc(site || url)}</a>　${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} クリップ</p><hr>` : '';
   let content = '';
-  if (c.html) content = c.html;
-  else if (c.text) content = c.text.split(/\n+/).map(l => `<p>${esc(l)}</p>`).join('');
+  if (str(c.html)) content = c.html;
+  else if (str(c.text)) content = c.text.split(/\n+/).map(l => `<p>${esc(l)}</p>`).join('');
   const body = sanitize(head + content);
   const t = now();
-  const n = {id: uid(), title: (c.title || site || 'Webクリップ').trim(), body, text: htmlToText(body),
+  const n = {id: uid(), title: (str(c.title) || site || 'Webクリップ').trim(), body, text: htmlToText(body),
     notebookId: await ensureClipNotebook(), tags: [], created: t, updated: t, deleted: false, dirty: true, fileId: null, syncedAt: null};
   await storeNote(n);
   S.filter = {type: 'nb', value: CLIP_NB}; S.query = '';
@@ -2529,8 +2534,12 @@ async function saveClip(c){
 async function handleIncomingClip(){
   const c = readIncomingClip(); if (!c) return false;
   history.replaceState(null, '', location.pathname);
-  if (c.paste) { for (const d of ['#settings', '#importDlg']) if ($(d).open) $(d).close(); showBanner('ショートカットから届いたクリップを保存します', 'クリップを保存', pasteClip, {sticky: true}); return 'paste'; }
-  await saveClip(c); return true;
+  for (const d of ['#settings', '#importDlg']) if ($(d).open) $(d).close();
+  if (c.paste) { showBanner('ショートカットから届いたクリップを保存します', 'クリップを保存', pasteClip, {sticky: true}); return 'paste'; }
+  // URLを開くだけで保存されないように、押してから保存する（どのサイトからでもこのURLを開かせられるため）
+  const label = String(c.title || c.url || '').trim().slice(0, 60);
+  showBanner(`届いたクリップを保存しますか？${label ? `「${label}」` : ''}`, 'クリップを保存', () => saveClip(c), {sticky: true});
+  return 'paste';
 }
 // Chromeなど共有ボタン用ショートカット（Safariリーダーで本文を取り出す）の形式：
 // 1行目 NOTEBOX-CLIP ／ 2行目 URL ／ 3行目 タイトル ／ 4行目以降 本文のHTML
@@ -2594,6 +2603,7 @@ function loadJSZip(){
     if (window.JSZip) return res();
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.integrity = 'sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg=='; s.crossOrigin = 'anonymous';   // 配信元で書き換えられていたら読み込まない
     s.onload = res; s.onerror = () => { s.remove(); rej(new Error('取り込み用の部品を読み込めません（オフライン？）')); };
     document.head.appendChild(s);
   });
@@ -2905,6 +2915,11 @@ async function checkForUpdate(){
 $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
+  {d: '2026年10月25日', items: [
+    'Webクリップ：URLから届いたクリップは「クリップを保存」を押してから保存するように（他のサイトのリンクを開いただけでノートが作られないように）',
+    '添付ファイル：HTMLやSVGなどは、開かずにダウンロードするように（中のスクリプトが動かないように）',
+    '安全対策：読み込める外部の部品と通信先を制限（CSP）。取り込み用の部品は改ざんされていないか確かめてから読み込むように',
+  ]},
   {d: '2026年10月24日', items: [
     'コピー・貼り付けで、見出し・箇条書き・チェックリスト・太字・引用・表・画像・コメントなどの書式を保つように（アプリ内のコピー）。他のアプリやWebページからの貼り付けも、見出し・箇条書き・太字・リンクは残す',
     '全画面表示で、ノートの横幅が画面いっぱいに広がるように（以前は最大960pxで止まっていた）',
