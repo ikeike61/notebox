@@ -135,6 +135,31 @@ body[data-solo] .ed-head{padding-top:10px}
 :root{--ic-chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 8h16l-8 10z'/%3E%3C/svg%3E")}
 :root{--ic-clip:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round' d='M16.5 7.5v9a4.5 4.5 0 0 1-9 0V6a3 3 0 0 1 6 0v10a1.5 1.5 0 0 1-3 0V8'/%3E%3C/svg%3E")}
 :root{--ic-doc:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M5.5 2H13v6.5h7v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5v-17A1.5 1.5 0 0 1 5.5 2zM7.5 12v1.8h9V12zm0 3.8v1.8h9v-1.8z'/%3E%3Cpath d='M14.6 2.4l5 5h-5z'/%3E%3C/svg%3E")}
+
+/* 縦書きで編集（本文だけを縦書きにする。ツールバーなどはそのまま使える） */
+#vertBar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px;padding:6px 10px;border-radius:10px;background:var(--sel);font-size:13px}
+#vertBar[hidden]{display:none}
+#vertBar>span{flex:1;display:inline-flex;align-items:center;gap:6px;color:var(--mute);min-width:0}
+#vertBar .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:600px){#vertBar .t{display:none}#vertBar>span{flex:0 0 auto}#vertBar{justify-content:flex-end}}
+#editor .tcy{text-combine-upright:all;-webkit-text-combine:horizontal}
+#vertBar button{height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--line);font-size:13px;color:var(--fg);background:var(--panel)}
+body[data-vert] .ed-body{display:flex;flex-direction:column;overflow:hidden;padding-bottom:12px}
+body[data-vert] #editor{writing-mode:vertical-rl;flex:1;min-height:0;height:auto;overflow-x:auto;overflow-y:hidden;line-height:1.9;font-size:var(--vfs,18px);
+  font-family:"Hiragino Mincho ProN","Yu Mincho","YuMincho","Noto Serif JP","Noto Serif CJK JP",serif;padding:8px 4px 8px 8px;word-break:normal;line-break:strict;overscroll-behavior-x:contain}
+body[data-vert][data-vgothic] #editor{font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif}
+body[data-vert] #editor p{margin:0 0 0 .2em}
+body[data-vert] #editor h1,body[data-vert] #editor h2,body[data-vert] #editor h3,body[data-vert] #editor h4{margin:0 1.1em 0 .8em;font-size:1.15em}
+body[data-vert] #editor h1{border-bottom:0;padding-bottom:0;border-left:2px solid var(--line);padding-left:4px}
+body[data-vert] #editor h2{border-left:0;padding-left:0;border-top:4px solid var(--accent);padding-top:8px}
+body[data-vert] #editor>:is(h1,h2,h3,h4)::before,body[data-vert] #editor>.fold::after{display:none}
+body[data-vert] #editor>.fh{display:block}
+body[data-vert] #editor img{max-height:70%;max-width:none;writing-mode:horizontal-tb;margin:0 .6em}
+body[data-vert] #editor table{writing-mode:horizontal-tb;font-size:.8em;margin:0 1em}
+body[data-vert] #editor ul,body[data-vert] #editor ol{margin:0 1em 0 0;padding:0 1.4em 0 0}
+body[data-vert] #editor blockquote{border-left:0;border-top:3px solid var(--line);padding:8px 0 0;margin:0 .8em}
+body[data-vert] #editor pre{writing-mode:horizontal-tb}
+@supports (text-combine-upright: digits 2){body[data-vert] #editor{text-combine-upright:digits 2}}
 @keyframes popin{0%{opacity:0;transform:scale(.92) translateY(8px)}60%{opacity:1;transform:scale(1.02)}100%{opacity:1;transform:none}}
 @keyframes edfade{from{opacity:.25;transform:translateY(6px)}to{opacity:1;transform:none}}
 .note-item.pop,.nav-item.pop{animation:popin .5s cubic-bezier(.2,.8,.3,1) both;animation-delay:var(--d,0ms)}
@@ -686,6 +711,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
           <button type="button" class="tag-add" id="tagAdd">＋ タグ</button>
           <datalist id="tagList"></datalist>
         </div>
+        <div id="vertBar" hidden><span><i data-ic="book" data-sz="15"></i><span class="t">縦書き（このまま編集できます）</span></span><button type="button" id="veFont">ゴシック</button><button type="button" data-vfs="-1">A−</button><button type="button" data-vfs="1">A＋</button><button type="button" id="veOff">横書きに戻す</button></div>
         <div id="editor" contenteditable="true"></div>
         <div id="imgBar" hidden>
           <span class="pct" id="imgPct"></span>
@@ -1588,6 +1614,7 @@ function editorHTML(){
   c.querySelectorAll('img[data-att]').forEach(i => { i.removeAttribute('src'); i.classList.remove('missing'); i.removeAttribute('class'); });
   c.querySelectorAll('.cur,.sel,.tsel,.flash,.nl-broken,.flash-h,.fold,.fh').forEach(x => { x.classList.remove('cur', 'sel', 'tsel', 'flash', 'nl-broken', 'flash-h', 'fold', 'fh'); if (!x.className) x.removeAttribute('class'); });
   c.querySelectorAll('[data-fn]').forEach(x => x.removeAttribute('data-fn'));
+  c.querySelectorAll('span.tcy').forEach(x => x.replaceWith(...x.childNodes)); c.normalize();
   c.querySelectorAll('img').forEach(i => i.removeAttribute('style'));
   return c.innerHTML;
 }
@@ -1629,7 +1656,7 @@ function loadIntoEditor(n){
   renderNbSelect(n); updateSaveState(n);
   deselectImage(); applyImgSizes(editorEl); hydrate(editorEl);
   updateClaudeBtn(n);
-  loadFolds(n.id); applyFolds();
+  loadFolds(n.id); applyFolds(); applyVert(n.id);
   histInit(n); hideCmtPop(); hideVarPop(); updateCmtBtn(); updateVarBtn(); updateCount(); markBrokenLinks(); renderBacklinks(n.id); hideLinkPop(); hideSlash();
   if (!$('#findBar').hidden) runFind();
 }
@@ -2017,6 +2044,7 @@ function selectionHTML(r){
   box.querySelectorAll('img[data-att]').forEach(i => i.removeAttribute('src'));
   box.querySelectorAll('.cur,.sel,.tsel,.flash,.nl-broken,.flash-h,.fold,.fh,.lazy,.missing').forEach(x => { x.classList.remove('cur', 'sel', 'tsel', 'flash', 'nl-broken', 'flash-h', 'fold', 'fh', 'lazy', 'missing'); if (!x.className) x.removeAttribute('class'); });
   box.querySelectorAll('[data-fn]').forEach(x => x.removeAttribute('data-fn'));
+  box.querySelectorAll('span.tcy').forEach(x => x.replaceWith(...x.childNodes));
   box.querySelectorAll('[style]').forEach(x => x.removeAttribute('style'));
   return box.innerHTML;
 }
@@ -2768,7 +2796,7 @@ function applyState(st){
     deselectImage();
     editorEl.innerHTML = st.html; titleEl.value = st.title;
     S.editTags = st.tags.slice(); closeTagInput(false); renderTagChips();
-    curCell = null; applyImgSizes(editorEl); hydrate(editorEl); updateTableBar(); hideVarPop(); updateVarBtn(true); applyFolds();
+    curCell = null; applyImgSizes(editorEl); hydrate(editorEl); updateTableBar(); hideVarPop(); updateVarBtn(true); applyFolds(); tcyWrap();
     if (st.caret != null) { editorEl.focus(); setCaretOffset(st.caret); }
     hideCmtPop(); updateCmtBtn();
     onEdit();
@@ -2919,6 +2947,9 @@ const CHANGELOG = [
     'Webクリップ：URLから届いたクリップは「クリップを保存」を押してから保存するように（他のサイトのリンクを開いただけでノートが作られないように）',
     '添付ファイル：HTMLやSVGなどは、開かずにダウンロードするように（中のスクリプトが動かないように）',
     '安全対策：読み込める外部の部品と通信先を制限（CSP）。取り込み用の部品は改ざんされていないか確かめてから読み込むように',
+  ]},
+  {d: '2026年10月26日', items: [
+    '縦書きのまま編集できるように：「⋯」→「縦書きにする（このまま編集）」で本文を縦書きにし、書式ボタン・元に戻す・検索・コメントなどもそのまま使える。ノートごとに記憶。数字の縦中横、明朝・ゴシックと文字の大きさの切り替えも'
   ]},
   {d: '2026年10月24日', items: [
     'コピー・貼り付けで、見出し・箇条書き・チェックリスト・太字・引用・表・画像・コメントなどの書式を保つように（アプリ内のコピー）。他のアプリやWebページからの貼り付けも、見出し・箇条書き・太字・リンクは残す',
@@ -3499,6 +3530,7 @@ function revealNode(node){
   saveFolds();
 }
 editorEl.addEventListener('pointerdown', e => {
+  if (document.body.hasAttribute('data-vert')) return;
   const h = e.target.closest?.('#editor > h1, #editor > h2, #editor > h3, #editor > h4');
   if (!h || e.target !== h) return;
   const r = h.getBoundingClientRect();
@@ -4440,7 +4472,60 @@ $('#vertView').querySelectorAll('[data-fs]').forEach(b => b.addEventListener('cl
 }));
 $('#vertBody').addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); e.currentTarget.scrollLeft -= e.deltaY; } }, {passive: false});
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#vertView').hidden) $('#vertView').hidden = true; });
-addMoreItem({k: 'vert', label: '縦書きで読む', ic: 'book', run: openVertical});
+
+/* ---------------- 縦書きで編集 ---------------- */
+// ノートごとに縦書き・横書きを記憶（端末ごと）。本文の中身は変えず、表示だけを縦書きにする
+const vertSet = () => { try { return new Set(JSON.parse(localStorage.getItem('nb.vertNotes') || '[]')); } catch { return new Set(); } };
+// 縦中横：半角の1〜2桁の数字と「!!」「!?」を、表示のときだけ横に並べる（保存する本文には入れない）
+const TCY_RE = /(?<![0-9A-Za-z.])([0-9]{1,2}|!!|!\?|\?\?)(?![0-9A-Za-z.])/g;
+function tcyWrap(){
+  if (!document.body.hasAttribute('data-vert')) return;
+  const sel = getSelection(), caretNode = sel.rangeCount ? sel.getRangeAt(0).startContainer : null;
+  const w = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, {acceptNode: n => n.parentElement.closest('.tcy,table,pre,a.att') || n === caretNode ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT});
+  const list = []; let t; while ((t = w.nextNode())) { TCY_RE.lastIndex = 0; if (TCY_RE.test(t.data)) list.push(t); }
+  for (const node of list) {
+    const f = document.createDocumentFragment(); let last = 0; TCY_RE.lastIndex = 0;
+    for (const m of node.data.matchAll(TCY_RE)) {
+      if (m.index > last) f.append(node.data.slice(last, m.index));
+      const sp = document.createElement('span'); sp.className = 'tcy'; sp.textContent = m[0]; f.append(sp); last = m.index + m[0].length;
+    }
+    if (last < node.data.length) f.append(node.data.slice(last));
+    node.replaceWith(f);
+  }
+}
+function tcyUnwrap(){ const s = editorEl.querySelectorAll('span.tcy'); if (!s.length) return; s.forEach(x => x.replaceWith(...x.childNodes)); editorEl.normalize(); }
+let tcyTimer;
+editorEl.addEventListener('input', () => { if (!document.body.hasAttribute('data-vert')) return; clearTimeout(tcyTimer); tcyTimer = setTimeout(tcyWrap, 1200); });
+function applyVert(id){
+  const on = !!id && vertSet().has(id);
+  document.body.toggleAttribute('data-vert', on);
+  $('#vertBar').hidden = !on;
+  if (!on) { tcyUnwrap(); return; }
+  tcyWrap();
+  document.body.toggleAttribute('data-vgothic', lsGet('nb.vfont', 'm') === 'g');
+  $('#veFont').textContent = document.body.hasAttribute('data-vgothic') ? '明朝' : 'ゴシック';
+  editorEl.style.setProperty('--vfs', (Number(lsGet('nb.vfs', '18')) || 18) + 'px');
+  editorEl.scrollLeft = 0;
+}
+function setVert(on){
+  const id = S.currentId; if (!id) return;
+  const s = vertSet(); on ? s.add(id) : s.delete(id); lsSet('nb.vertNotes', JSON.stringify([...s]));
+  applyVert(id); if (on) { editorEl.focus(); toast('縦書きにしました。このまま書いたり直したりできます'); }
+}
+$('#veOff').addEventListener('click', () => setVert(false));
+$('#veFont').addEventListener('click', () => { lsSet('nb.vfont', document.body.hasAttribute('data-vgothic') ? 'm' : 'g'); applyVert(S.currentId); });
+$('#vertBar').querySelectorAll('[data-vfs]').forEach(b => b.addEventListener('click', () => {
+  const v = Math.max(12, Math.min(32, (Number(lsGet('nb.vfs', '18')) || 18) + Number(b.dataset.vfs) * 2));
+  lsSet('nb.vfs', String(v)); editorEl.style.setProperty('--vfs', v + 'px');
+}));
+// マウスのホイール（縦の回転）で横に送る
+editorEl.addEventListener('wheel', e => {
+  if (!document.body.hasAttribute('data-vert') || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+  e.preventDefault(); editorEl.scrollLeft -= e.deltaY;
+}, {passive: false});
+addMoreItem({k: 'vert', label: '縦書きにする（このまま編集）', ic: 'book', run: () => setVert(true), show: n => !document.body.hasAttribute('data-vert')});
+addMoreItem({k: 'vertoff', label: '横書きに戻す', ic: 'book', run: () => setVert(false), show: n => document.body.hasAttribute('data-vert')});
+addMoreItem({k: 'vertread', label: '縦書きで読む（全画面・読むだけ）', ic: 'book', run: openVertical});
 
 /* ---------------- Googleへの再接続を減らす ---------------- */
 const autoReconnOn = () => { try { return localStorage.getItem('nb.autoReconn') !== '0'; } catch { return true; } };
