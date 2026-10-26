@@ -46,7 +46,9 @@ body[data-full] .ed-body{padding:24px 48px 80px}
 body[data-solo] #sidebar,body[data-solo] #listPane,body[data-solo] .split,body[data-solo] #fullBtn,body[data-solo] #winBtn,body[data-solo] #backBtn{display:none!important}
 body[data-solo] #app{grid-template-columns:minmax(0,1fr)!important}
 body[data-solo] #editorPane{display:flex!important}
-body[data-solo] .ed-body{max-width:980px;width:100%;margin:0 auto}
+body[data-solo] .ed-body{padding:24px 48px 80px}
+@media (max-width:899px){body[data-solo] .ed-body{padding:14px 16px 120px}}
+body[data-solo] #veFull{display:none}
 #soloBar{display:none;align-items:center;gap:8px;padding:6px 10px;padding-top:calc(6px + env(safe-area-inset-top));background:var(--side);color:var(--side-fg);font-size:13px;flex:none}
 body[data-solo] #soloBar{display:flex}
 body[data-solo] .ed-head{padding-top:10px}
@@ -2419,7 +2421,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {}); renderAbk().catch(() => {});
 }
-const APP_VERSION = '2026.10.26-3';
+const APP_VERSION = '2026.10.26-4';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2958,6 +2960,7 @@ const CHANGELOG = [
     '安全対策：読み込める外部の部品と通信先を制限（CSP）。取り込み用の部品は改ざんされていないか確かめてから読み込むように',
   ]},
   {d: '2026年10月26日', items: [
+    '別のウィンドウで開いたとき、ウィンドウを最大化すると本文も横いっぱいに広がるように（以前は最大980pxで止まっていた）',
     '「最新版に更新」が効かないことがある問題を修正（古い保存分をいったん外してから読み直すように）',
     'PCで縦書きにしたとき、自動で全画面にして本文を広く表示（帯の「元の幅」で戻せる）。タイトル・タグまわりもつめて、縦の長さを確保',
     '縦書きのまま編集できるように：「⋯」→「縦書きにする（このまま編集）」で本文を縦書きにし、書式ボタン・元に戻す・検索・コメントなどもそのまま使える。ノートごとに記憶。数字の縦中横、明朝・ゴシックと文字の大きさの切り替えも'
@@ -4521,7 +4524,7 @@ function applyVert(id){
 function setVert(on){
   const id = S.currentId; if (!id) return;
   const s = vertSet(); on ? s.add(id) : s.delete(id); lsSet('nb.vertNotes', JSON.stringify([...s]));
-  if (on && !isNarrow() && !document.body.dataset.full) setFull(true);   // PCでは縦書きにしたとき全画面に（帯の「元の幅」で戻せる）
+  if (on && !isNarrow() && !SOLO && !document.body.dataset.full) setFull(true);   // PCでは縦書きにしたとき全画面に（帯の「元の幅」で戻せる）
   applyVert(id); syncVeFull();
   if (on) { editorEl.focus(); toast('縦書きにしました。このまま書いたり直したりできます'); }
 }
