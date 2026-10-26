@@ -1,5 +1,5 @@
 // オフライン用：アプリ本体をキャッシュ（Googleへの通信はキャッシュしない）
-const CACHE = 'notebox-v39';
+const CACHE = 'notebox-v40';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './maskable-512.png'];
 
 self.addEventListener('install', e => {
@@ -19,7 +19,10 @@ self.addEventListener('fetch', e => {
     e.respondWith(caches.open(CACHE).then(async cache => {
       const cached = () => cache.match('./index.html');
       try {
-        const r = await Promise.race([fetch(e.request, {cache: 'no-cache'}), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))]);
+        // 「最新版に更新」（?v=付き）のときは保存分に頼らず必ずネットから。通常は8秒待っても来なければ保存分
+        const force = url.searchParams.has('v');
+        const net = fetch(new Request(e.request.url, {cache: 'no-cache', credentials: 'same-origin'}));
+        const r = force ? await net : await Promise.race([net, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))]);
         if (r.ok) { cache.put('./index.html', r.clone()); return r; }
         return (await cached()) || r;
       } catch { return (await cached()) || Response.error(); }
