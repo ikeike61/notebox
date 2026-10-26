@@ -144,7 +144,13 @@ body[data-solo] .ed-head{padding-top:10px}
 @media (max-width:600px){#vertBar .t{display:none}#vertBar>span{flex:0 0 auto}#vertBar{justify-content:flex-end}}
 #editor .tcy{text-combine-upright:all;-webkit-text-combine:horizontal}
 #vertBar button{height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--line);font-size:13px;color:var(--fg);background:var(--panel)}
-body[data-vert] .ed-body{display:flex;flex-direction:column;overflow:hidden;padding-bottom:12px}
+body[data-vert] .ed-body{display:flex;flex-direction:column;overflow:hidden;padding-top:10px;padding-bottom:12px}
+/* 縦書きの本文に高さを回すため、タイトル・タグ・帯をつめる */
+body[data-vert] #title{font-size:18px;padding:0}
+body[data-vert] .tag-box{padding:2px 0 6px;margin-bottom:6px;min-height:0}
+body[data-vert] #vertBar{margin-bottom:6px;padding:3px 8px}
+body[data-vert] #vertBar button{height:26px;padding:0 8px}
+@media (max-width:899px){#vertBar .desk-only{display:none}}
 body[data-vert] #editor{writing-mode:vertical-rl;flex:1;min-height:0;height:auto;overflow-x:auto;overflow-y:hidden;line-height:1.9;font-size:var(--vfs,18px);
   font-family:"Hiragino Mincho ProN","Yu Mincho","YuMincho","Noto Serif JP","Noto Serif CJK JP",serif;padding:8px 4px 8px 8px;word-break:normal;line-break:strict;overscroll-behavior-x:contain}
 body[data-vert][data-vgothic] #editor{font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif}
@@ -711,7 +717,7 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
           <button type="button" class="tag-add" id="tagAdd">＋ タグ</button>
           <datalist id="tagList"></datalist>
         </div>
-        <div id="vertBar" hidden><span><i data-ic="book" data-sz="15"></i><span class="t">縦書き（このまま編集できます）</span></span><button type="button" id="veFont">ゴシック</button><button type="button" data-vfs="-1">A−</button><button type="button" data-vfs="1">A＋</button><button type="button" id="veOff">横書きに戻す</button></div>
+        <div id="vertBar" hidden><span><i data-ic="book" data-sz="15"></i><span class="t">縦書き（このまま編集できます）</span></span><button type="button" id="veFont">ゴシック</button><button type="button" data-vfs="-1">A−</button><button type="button" data-vfs="1">A＋</button><button type="button" id="veFull" class="desk-only">全画面</button><button type="button" id="veOff">横書きに戻す</button></div>
         <div id="editor" contenteditable="true"></div>
         <div id="imgBar" hidden>
           <span class="pct" id="imgPct"></span>
@@ -1983,7 +1989,7 @@ function setFull(on){
   const b = $('#fullBtn'); b.innerHTML = on ? ICON_SHRINK : ICON_EXPAND;
   b.title = on ? '小さくする' : '大きくする'; b.setAttribute('aria-label', b.title);
 }
-$('#fullBtn').addEventListener('click', () => setFull(!document.body.dataset.full));
+$('#fullBtn').addEventListener('click', () => { setFull(!document.body.dataset.full); $('#veFull').textContent = document.body.dataset.full ? '元の幅' : '全画面'; });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.dataset.full && !document.querySelector('dialog[open]') && $('#tagInput').hidden) setFull(false); });
 
 /* splitters (パネル幅の変更) */
@@ -2949,6 +2955,7 @@ const CHANGELOG = [
     '安全対策：読み込める外部の部品と通信先を制限（CSP）。取り込み用の部品は改ざんされていないか確かめてから読み込むように',
   ]},
   {d: '2026年10月26日', items: [
+    'PCで縦書きにしたとき、自動で全画面にして本文を広く表示（帯の「元の幅」で戻せる）。タイトル・タグまわりもつめて、縦の長さを確保',
     '縦書きのまま編集できるように：「⋯」→「縦書きにする（このまま編集）」で本文を縦書きにし、書式ボタン・元に戻す・検索・コメントなどもそのまま使える。ノートごとに記憶。数字の縦中横、明朝・ゴシックと文字の大きさの切り替えも'
   ]},
   {d: '2026年10月24日', items: [
@@ -4501,7 +4508,7 @@ function applyVert(id){
   document.body.toggleAttribute('data-vert', on);
   $('#vertBar').hidden = !on;
   if (!on) { tcyUnwrap(); return; }
-  tcyWrap();
+  tcyWrap(); $('#veFull').textContent = document.body.dataset.full ? '元の幅' : '全画面';
   document.body.toggleAttribute('data-vgothic', lsGet('nb.vfont', 'm') === 'g');
   $('#veFont').textContent = document.body.hasAttribute('data-vgothic') ? '明朝' : 'ゴシック';
   editorEl.style.setProperty('--vfs', (Number(lsGet('nb.vfs', '18')) || 18) + 'px');
@@ -4510,9 +4517,13 @@ function applyVert(id){
 function setVert(on){
   const id = S.currentId; if (!id) return;
   const s = vertSet(); on ? s.add(id) : s.delete(id); lsSet('nb.vertNotes', JSON.stringify([...s]));
-  applyVert(id); if (on) { editorEl.focus(); toast('縦書きにしました。このまま書いたり直したりできます'); }
+  if (on && !isNarrow() && !document.body.dataset.full) setFull(true);   // PCでは縦書きにしたとき全画面に（帯の「元の幅」で戻せる）
+  applyVert(id); syncVeFull();
+  if (on) { editorEl.focus(); toast('縦書きにしました。このまま書いたり直したりできます'); }
 }
 $('#veOff').addEventListener('click', () => setVert(false));
+const syncVeFull = () => { $('#veFull').textContent = document.body.dataset.full ? '元の幅' : '全画面'; };
+$('#veFull').addEventListener('click', () => { setFull(!document.body.dataset.full); syncVeFull(); });
 $('#veFont').addEventListener('click', () => { lsSet('nb.vfont', document.body.hasAttribute('data-vgothic') ? 'm' : 'g'); applyVert(S.currentId); });
 $('#vertBar').querySelectorAll('[data-vfs]').forEach(b => b.addEventListener('click', () => {
   const v = Math.max(12, Math.min(32, (Number(lsGet('nb.vfs', '18')) || 18) + Number(b.dataset.vfs) * 2));
