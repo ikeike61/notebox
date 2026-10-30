@@ -168,6 +168,56 @@ body[data-vert] #editor ul,body[data-vert] #editor ol{margin:0 1em 0 0;padding:0
 body[data-vert] #editor blockquote{border-left:0;border-top:3px solid var(--line);padding:8px 0 0;margin:0 .8em}
 body[data-vert] #editor pre{writing-mode:horizontal-tb}
 @supports (text-combine-upright: digits 2){body[data-vert] #editor{text-combine-upright:digits 2}}
+
+/* カンバンボード */
+body[data-board] .toolbar,body[data-board] #editor,body[data-board] #vertBar,body[data-board] #varBtn,body[data-board] #cmtBtn,body[data-board] #claudeBtn,body[data-board] #backlinks,body[data-board] #countBtn{display:none!important}
+body[data-board] .ed-body{display:flex;flex-direction:column;overflow:hidden;padding-bottom:10px}
+#kb{display:flex;flex-direction:column;flex:1;min-height:0}
+#kb[hidden]{display:none}
+.kb-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
+.kb-bar button{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel)}
+.kb-bar button:disabled{opacity:.4}
+.kb-hint{font-size:12px;color:var(--mute)}
+@media (max-width:899px){.kb-hint{display:none}}
+.kb-board{flex:1;min-height:0;display:flex;gap:12px;overflow-x:auto;align-items:flex-start;padding-bottom:6px;overscroll-behavior-x:contain}
+.kb-col{flex:0 0 268px;max-height:100%;display:flex;flex-direction:column;background:var(--sel);border-radius:12px}
+@media (max-width:899px){.kb-col{flex-basis:78vw}}
+.kb-col.drop{outline:2px dashed var(--accent);outline-offset:-2px}
+.kb-head{display:flex;align-items:center;gap:6px;padding:9px 10px 5px 12px}
+.kb-head .nm{flex:1;font-weight:700;outline:none;border-radius:4px;padding:1px 3px;min-width:0;overflow-wrap:anywhere}
+.kb-head .nm:focus{background:var(--panel)}
+.kb-head .ct{font-size:12px;color:var(--mute);background:var(--panel);border-radius:10px;padding:1px 8px}
+.kb-head .cm{width:28px;height:28px;border-radius:7px;color:var(--mute);display:grid;place-items:center}
+.kb-head .cm:hover{background:var(--panel)}
+.kb-cards{flex:1;overflow-y:auto;padding:4px 9px 6px;display:flex;flex-direction:column;gap:8px;min-height:36px}
+.kb-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;position:relative;touch-action:pan-y}
+.kb-card:hover{border-color:var(--accent)}
+.kb-card .lb{position:absolute;left:0;top:8px;bottom:8px;width:4px;border-radius:0 3px 3px 0}
+.kb-card .t{font-weight:600;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.kb-card .s{color:var(--mute);font-size:12px;margin-top:3px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+.kb-card .lk{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.kb-card .lk button,#kbLinks .lnk{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:2px 8px;border-radius:8px;background:var(--accent-soft);color:var(--accent);max-width:100%}
+.kb-card .lk button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kb-card .lk button.gone{background:var(--sel);color:var(--mute);text-decoration:line-through}
+.kb-card .du{display:inline-block;margin-top:6px;font-size:11px;padding:1px 7px;border-radius:8px;border:1px solid var(--line);color:var(--mute)}
+.kb-card .du.soon{border-color:#d08a00;color:#d08a00}.kb-card .du.over{border-color:var(--danger);color:var(--danger)}
+.kb-card.ghost{position:fixed;z-index:60;pointer-events:none;transform:rotate(2deg);box-shadow:0 12px 30px rgba(0,0,0,.22);opacity:.95;margin:0}
+.kb-card.dragging{display:none}
+.kb-ph{border:2px dashed var(--accent);border-radius:10px;background:var(--accent-soft)}
+.kb-add{margin:2px 9px 9px;padding:7px 8px;border-radius:8px;color:var(--mute);text-align:left;font-size:13px}
+.kb-add:hover{background:var(--panel);color:var(--fg)}
+.kb-newcol{flex:0 0 160px;border:2px dashed var(--line);border-radius:12px;padding:12px;color:var(--mute);font-size:13px}
+.kb-field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute)}
+#kbLinks{display:flex;flex-wrap:wrap;gap:6px}
+#kbLinks .lnk button{padding:0 2px;color:inherit;opacity:.7}
+#kbLinks:empty::before{content:"（なし）";font-size:12px}
+#kbAddLink{align-self:flex-start;padding:5px 10px;font-size:13px}
+.kb-labels{display:flex;gap:8px}
+.kb-labels button{width:26px;height:26px;border-radius:50%;border:2px solid transparent;padding:0}
+.kb-labels button.on{border-color:var(--fg)}
+.kb-labels button.none{border:2px dashed var(--line);background:var(--panel)}
+.kb-labels button.none.on{border-style:solid;border-color:var(--fg)}
+.ni-board{display:inline-flex;align-items:center;gap:3px;color:var(--accent);font-weight:600}
 @keyframes popin{0%{opacity:0;transform:scale(.92) translateY(8px)}60%{opacity:1;transform:scale(1.02)}100%{opacity:1;transform:none}}
 @keyframes edfade{from{opacity:.25;transform:translateY(6px)}to{opacity:1;transform:none}}
 .note-item.pop,.nav-item.pop{animation:popin .5s cubic-bezier(.2,.8,.3,1) both;animation-delay:var(--d,0ms)}
@@ -719,6 +769,10 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
           <button type="button" class="tag-add" id="tagAdd">＋ タグ</button>
           <datalist id="tagList"></datalist>
         </div>
+        <div id="kb" hidden>
+          <div class="kb-bar"><button type="button" id="kbAddCol">＋ 列を追加</button><button type="button" id="kbUndo" disabled>元に戻す</button><span class="kb-hint">カードはドラッグで移動（スマホ・タブレットは長押ししてから）。カードを押すと編集・ノートへのリンクの追加ができます</span></div>
+          <div class="kb-board" id="kbBoard"></div>
+        </div>
         <div id="vertBar" hidden><span><i data-ic="book" data-sz="15"></i><span class="t">縦書き（このまま編集できます）</span></span><button type="button" id="veFont">ゴシック</button><button type="button" data-vfs="-1">A−</button><button type="button" data-vfs="1">A＋</button><button type="button" id="veFull" class="desk-only">全画面</button><button type="button" id="veOff">横書きに戻す</button></div>
         <div id="editor" contenteditable="true"></div>
         <div id="imgBar" hidden>
@@ -793,6 +847,17 @@ body.has-bulk #banner,body.has-bulk #toast.show{bottom:calc(66px + env(safe-area
     <p class="hint"><b>iPhoneのChromeなど、共有ボタン用ショートカット</b>：Safariリーダーで本文を取り出す方式です（ログインが必要なページは取れません。手順はREADME）。「テキスト」アクションの1行目に入れる目印：</p>
     <input id="scMark" readonly value="NOTEBOX-CLIP">
     <div class="row"><button type="button" data-copy="scMark">コピー</button></div>
+  </form>
+</dialog>
+<dialog id="kbDlg">
+  <form method="dialog" class="dlg">
+    <div class="dlg-head"><h3 tabindex="-1" autofocus id="kbDlgTitle">カード</h3><button class="dlg-x" value="close" aria-label="閉じる" title="閉じる"><i data-ic="close"></i></button></div>
+    <label>タイトル<textarea id="kbT" rows="2" placeholder="カードの内容"></textarea></label>
+    <label>メモ<textarea id="kbMemo" rows="4" placeholder="詳しいことや補足（任意）"></textarea></label>
+    <div class="kb-field"><span>ノートへのリンク</span><div id="kbLinks"></div><button type="button" id="kbAddLink">＋ ノートへのリンクを追加</button></div>
+    <div class="kb-field"><span>色</span><div class="kb-labels" id="kbLabel"></div></div>
+    <label>締め切り（任意）<input type="date" id="kbDue"></label>
+    <div class="row"><button type="button" id="kbDel" class="danger" style="margin-right:auto">削除</button><button type="button" id="kbSave" class="primary">保存</button></div>
   </form>
 </dialog>
 <dialog id="aboutDlg">
@@ -1055,6 +1120,22 @@ const S = {
   syncing: false, syncAgain: false, error: '', lastSyncAt: 0,
   selMode: false, selected: new Set(), fresh: new Map(), freshNav: new Map(), lastClicked: null, suppressClick: false,
 };
+// カンバンボードのデータ（ノートと同じ仕組みで同期する。本文は検索・リンク元表示用に自動で作る）
+const KB_LABELS = {r: '#e05252', o: '#e8913a', y: '#d9b310', g: '#2f9e6a', b: '#4a84e0', p: '#9a5fd0'};
+function normBoard(b){
+  b = b && typeof b === 'object' ? b : {};
+  const str = (v, n = 300) => String(v ?? '').slice(0, n);
+  const cols = (Array.isArray(b.cols) ? b.cols : []).filter(c => c && c.id).map(c => ({id: str(c.id, 40), name: str(c.name, 80)}));
+  const ids = new Set(cols.map(c => c.id));
+  const cards = (Array.isArray(b.cards) ? b.cards : []).filter(c => c && c.id && ids.has(c.col)).map(c => ({id: str(c.id, 40), col: str(c.col, 40), t: str(c.t, 500), memo: str(c.memo, 5000),
+    links: (Array.isArray(c.links) ? c.links : []).map(x => str(x, 80)).slice(0, 20), due: /^\d{4}-\d{2}-\d{2}$/.test(c.due || '') ? c.due : '', label: KB_LABELS[c.label] ? c.label : ''}));
+  return {cols: cols.length ? cols : [{id: 'k1', name: 'やること'}, {id: 'k2', name: '作業中'}, {id: 'k3', name: '完了'}], cards};
+}
+function boardBody(b){
+  return b.cols.map(c => `<h2>${esc(c.name)}</h2><ul>` + b.cards.filter(x => x.col === c.id).map(x => `<li>${esc(x.t)}${x.memo ? '<br>' + esc(x.memo).replace(/\n/g, '<br>') : ''}`
+    + x.links.map(id => ` <a class="nlink" data-note="${esc(id)}" contenteditable="false">${esc(S.notes.get(id)?.title || 'リンク')}</a>`).join('') + '</li>').join('') + '</ul>').join('');
+}
+const isBoard = n => n?.type === 'board';
 async function storeNote(n){ S.notes.set(n.id, n); await db.put('notes', n); }
 function normalizeNote(d){
   const body = sanitize(d.body || '');
@@ -1065,10 +1146,11 @@ function normalizeNote(d){
     pinned: Number(d.pinned) || 0, rev: Number(d.rev) || 0,
     archived: Number(d.archived) || 0,
     conflictOf: d.conflictOf ? String(d.conflictOf) : null,
+    ...(d.type === 'board' ? {type: 'board', board: normBoard(d.board)} : {}),
     claude: Number(d.claude) || 0, cdoc: d.cdoc && d.cdoc.id ? {id: String(d.cdoc.id), ver: String(d.cdoc.ver || ''), h: String(d.cdoc.h || ''), at: Number(d.cdoc.at) || 0, fv: Number(d.cdoc.fv) || 1} : null,
   };
 }
-const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted, pinned:n.pinned || 0, rev:n.rev || 0, archived:n.archived || 0, claude:n.claude || 0, cdoc:n.cdoc || null, conflictOf:n.conflictOf || null});
+const serialize = n => ({id:n.id, title:n.title, body:n.body, notebookId:n.notebookId, tags:n.tags, created:n.created, updated:n.updated, deleted:n.deleted, pinned:n.pinned || 0, rev:n.rev || 0, archived:n.archived || 0, claude:n.claude || 0, cdoc:n.cdoc || null, conflictOf:n.conflictOf || null, ...(n.type === 'board' ? {type: 'board', board: n.board} : {})});
 // 同期で使う版番号（ピン留めなど、更新日時を変えない変更でも上がる）
 const revOf = n => Math.max(Number(n.rev) || 0, Number(n.updated) || 0);
 const activeNotebooks = () => S.notebooks.filter(n => !n.deleted).sort((a,b) => a.name.localeCompare(b.name, 'ja'));
@@ -1629,7 +1711,7 @@ function editorHTML(){
 async function saveCurrent(){
   saveTimer = null;
   const n = S.notes.get(S.currentId); if (!n || n.deleted) return;
-  const title = titleEl.value, body = editorHTML(), tags = (S.editTags || []).slice();
+  const title = titleEl.value, body = isBoard(n) ? boardBody(n.board) : editorHTML(), tags = (S.editTags || []).slice();
   if (title === n.title && body === n.body && JSON.stringify(tags) === JSON.stringify(n.tags)) { updateSaveState(n); return; }
   Object.assign(n, {title, body, text: htmlToText(body), tags, updated: now(), dirty: true});
   S.loadedUpdated = n.updated;
@@ -1640,7 +1722,7 @@ async function saveCurrent(){
 function updateSaveState(n){
   $('#saveState').textContent = n.deleted ? 'ゴミ箱' : n.dirty ? '端末に保存済み' : (n.fileId ? 'ドライブと同期済み' : '');
 }
-function isEmptyNote(n){ return n && !n.title.trim() && !n.text.trim() && !n.body.includes('data-att') && !n.fileId; }
+function isEmptyNote(n){ return n && !isBoard(n) && !n.title.trim() && !n.text.trim() && !n.body.includes('data-att') && !n.fileId; }
 async function cleanupEmpty(id){
   const n = S.notes.get(id);
   if (n && !n.deleted && isEmptyNote(n)) { S.notes.delete(id); await db.del('notes', id); }
@@ -1653,7 +1735,9 @@ function renderNbSelect(n){
 }
 function loadIntoEditor(n){
   titleEl.value = n.title; S.editTags = (n.tags || []).slice(); closeTagInput(false); renderTagChips();
-  editorEl.innerHTML = sanitize(n.body);
+  const board = isBoard(n);
+  document.body.toggleAttribute('data-board', board); $('#kb').hidden = !board;
+  editorEl.innerHTML = board ? '' : sanitize(n.body);
   S.loadedUpdated = n.updated; S.range = null; curCell = null; $('#tableBar').hidden = true;
   const ro = !!n.deleted;
   editorEl.contentEditable = String(!ro); titleEl.readOnly = ro;
@@ -1664,7 +1748,8 @@ function loadIntoEditor(n){
   renderNbSelect(n); updateSaveState(n);
   deselectImage(); applyImgSizes(editorEl); hydrate(editorEl);
   updateClaudeBtn(n);
-  loadFolds(n.id); applyFolds(); applyVert(n.id);
+  loadFolds(n.id); applyFolds(); applyVert(board ? null : n.id);
+  if (board) { KB.id = n.id; KB.hist = []; renderKB(); editorEl.contentEditable = 'false'; }
   histInit(n); hideCmtPop(); hideVarPop(); updateCmtBtn(); updateVarBtn(); updateCount(); markBrokenLinks(); renderBacklinks(n.id); hideLinkPop(); hideSlash();
   if (!$('#findBar').hidden) runFind();
 }
@@ -2187,6 +2272,7 @@ async function purge(n){
 
 /* ---------------- notes & notebooks ---------------- */
 async function newNote(tpl){
+  if (!tpl && S.filter.type === 'boards') return newBoard();
   const f = S.filter, t = now();
   if (f.type === 'trash') S.filter = {type: 'all', value: ''};
   S.query = ''; $('#search').value = '';
@@ -2303,6 +2389,7 @@ function renderNav(){
     h += `<div style="height:6px"></div>`;
   }
   h += item('all', '', 'すべてのノート', live.filter(n => n.notebookId !== TPL_NB).length, '', 'notebook');
+  h += item('boards', '', 'カンバンボード', live.filter(isBoard).length, `<span class="more" id="addBoard" role="button" aria-label="新しいボード" title="新しいボード">＋</span>`, 'board');
   const nbActive = !S.query && f.type === 'nb';
   h += head('nb', 'ノートブック', activeNotebooks().length, nbActive, `<button class="mini" id="addNb" aria-label="ノートブックを追加">＋</button>`, 'data-nbroot="1"');
   const collapsed = getCollapsed();
@@ -2350,6 +2437,7 @@ function visibleNotes(){
     if (f.type === 'nb') { const ids = f.value ? new Set([f.value, ...nbDescendants(f.value)]) : null; arr = arr.filter(n => ids ? ids.has(nbOf(n)) : !nbOf(n)); }
     if (f.type === 'tag') arr = arr.filter(n => (n.tags || []).includes(f.value));
     if (f.type === 'all') arr = arr.filter(n => n.notebookId !== TPL_NB);
+    if (f.type === 'boards') arr = arr.filter(isBoard);
   }
   return sortNotes(arr);
 }
@@ -2360,6 +2448,7 @@ function listTitle(){
   if (f.type === 'tag') return '# ' + f.value;
   if (f.type === 'trash') return 'ゴミ箱';
   if (f.type === 'archive') return 'アーカイブ';
+  if (f.type === 'boards') return 'カンバンボード';
   return 'すべてのノート';
 }
 function renderList(){
@@ -2380,7 +2469,8 @@ function renderList(){
     const tags = (n.tags || []).slice(0, 3).map(t => `<span class="tag" style="--h:${tagHue(t)}">#${esc(t)}</span>`).join('');
     const meta = `<div class="ni-meta">${n.claude && !n.deleted ? `<span class="ni-claude" title="Claudeと共有中">${ic('share', 11)}Claude</span>` : ''}${n.archived && S.query ? `<span class="ni-arch">${ic('archive', 12)}アーカイブ</span>` : ''}<span>${dateOf(n)}</span><span class="nbn">${esc(notebookName(n.notebookId))}</span>${view !== 'card' && n.body.includes('<img') ? `<span class="ni-img" title="画像あり">${ic('image', 13)}</span>` : ''}${view === 'compact' ? '' : tags}${n.dirty ? '<span class="unsynced" title="未同期">●</span>' : ''}</div>`;
     const title = `<div class="ni-title">${n.pinned && !n.deleted ? `<span class="ni-pin" title="ピン留め中">${ICON_PIN_SM}</span> ` : ''}${esc(n.title || '無題のノート')}</div>`;
-    const snip = `<div class="ni-snip">${esc((n.text || '').slice(0, 140)) || '&nbsp;'}</div>`;
+    const snip = isBoard(n) ? `<div class="ni-snip"><span class="ni-board">${ic('board', 12)}ボード</span> ${esc(n.board.cols.map(c => `${c.name} ${n.board.cards.filter(x => x.col === c.id).length}`).join('・'))}</div>`
+      : `<div class="ni-snip">${esc((n.text || '').slice(0, 140)) || '&nbsp;'}</div>`;
     const cls = `note-item ${n.id === S.currentId && !S.selMode ? 'active' : ''} ${S.selected.has(n.id) ? 'checked' : ''}${pop.has(n.id) ? ` pop" style="--d:${pop.get(n.id)}ms` : ''}`;
     if (view === 'card') {
       const m = n.body.match(/<img[^>]*data-att="([^"]+)"/) || n.body.match(/<img[^>]*src="(https?:[^"]+)"/);
@@ -2421,7 +2511,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {}); renderAbk().catch(() => {});
 }
-const APP_VERSION = '2026.10.26-4';
+const APP_VERSION = '2026.10.30-1';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -2441,6 +2531,7 @@ $('#nav').addEventListener('click', async e => {
   const st = e.target.closest('[data-sectoggle]');
   if (st) { toggleSec(st.dataset.sectoggle); return; }
   if (e.target.closest('#addNb')) { addNotebook(); return; }
+  if (e.target.closest('#addBoard')) { e.stopPropagation(); closeDrawer(); newBoard(); return; }
   const tw = e.target.closest('[data-twist]');
   if (tw && tw.textContent) { e.stopPropagation(); toggleCollapsed(tw.dataset.twist); return; }
   const more = e.target.closest('[data-nbmenu]');
@@ -2743,7 +2834,7 @@ async function importPackage(file){
       const nbId = pkg.notebooks ? (n.notebookId && S.notebooks.some(b => b.id === n.notebookId) ? n.notebookId : null) : nb.id;
       await storeNote({id: n.id, title: String(n.title || ''), body: clean, text: htmlToText(clean), notebookId: nbId,
         tags: Array.isArray(n.tags) ? n.tags.map(String) : [], created: Number(n.created) || now(), updated: Number(n.updated) || now(),
-        pinned: Number(n.pinned) || 0, rev: 0, deleted: false, dirty: true, fileId: null, syncedAt: null});
+        pinned: Number(n.pinned) || 0, rev: 0, deleted: false, dirty: true, fileId: null, syncedAt: null, ...(n.type === 'board' ? {type: 'board', board: normBoard(n.board)} : {})});
       added++;
     }
     say(`${added} 件を取り込みました` + (skipped ? `（取り込み済みの ${skipped} 件はスキップ）` : '') + (missing ? `／見つからない添付 ${missing} 件` : '')
@@ -2954,6 +3045,11 @@ async function checkForUpdate(){
 $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
+  {d: '2026年10月30日', items: [
+    'カンバンボードを追加：左メニューの「カンバンボード」の＋で作成。列（やること／作業中／完了など）を自由に追加・名前変更・並べ替え・削除でき、カードはドラッグで別の列や順番へ移動（スマホ・タブレットは長押ししてから）',
+    'カードにはタイトル・メモ・色・締め切りを付けられ、「ノートへのリンク」を追加するとカードからそのノートへ直接移動できます（リンクされたノートの下部にも参照元としてボードが出ます）',
+    'ボードの操作は「元に戻す」（PCは Ctrl+Z）で取り消し可能。ボードは他のノートと同じようにドライブへ同期・検索・アーカイブ・ゴミ箱に対応',
+  ]},
   {d: '2026年10月25日', items: [
     'Webクリップ：URLから届いたクリップは「クリップを保存」を押してから保存するように（他のサイトのリンクを開いただけでノートが作られないように）',
     '添付ファイル：HTMLやSVGなどは、開かずにダウンロードするように（中のスクリプトが動かないように）',
@@ -3739,7 +3835,7 @@ function updateVarBtn(now_){
   clearTimeout(varTimer);
   varTimer = setTimeout(() => {
     const n = S.notes.get(S.currentId), b = $('#varBtn');
-    if (!n || n.deleted || lsGet('nb.varSuggest') === '0') { b.hidden = true; markVariants([]); return; }
+    if (!n || n.deleted || isBoard(n) || lsGet('nb.varSuggest') === '0') { b.hidden = true; markVariants([]); return; }
     const opt = varScopeOptions(n)[0], notes = varNotesFor(n, opt.v);
     const mine = scanVariants(notes).filter(g => g.list.some(f => f.notes.has(n.id))), c = mine.length;
     markVariants(mine);
@@ -3846,7 +3942,8 @@ addMoreItem({k: 'unfoldall', label: '折りたたみをすべて開く', ic: 'li
 addMoreItem({k: 'variants', label: '表記ゆれチェック', ic: 'check', run: () => openVariants(), show: n => !n.deleted});
 $('#moreBtn').addEventListener('click', async () => {
   const n = S.notes.get(S.currentId); if (!n) return;
-  const items = MORE_ITEMS.filter(x => !x.show || x.show(n));
+  const KB_OK = new Set(['dup', 'arch', 'unarch', 'm-del', 'm-purge', 'm-restore', 'm-pin', 'm-unpin', 'win']);
+  const items = MORE_ITEMS.filter(x => (!isBoard(n) || KB_OK.has(x.k)) && (!x.show || x.show(n)));
   const k = await showMenu(items.map(x => ({k: x.k, label: x.label, danger: x.danger, ic: x.ic})));
   const it = items.find(x => x.k === k); if (it) it.run(n);
 });
@@ -3920,12 +4017,13 @@ document.addEventListener('pointerdown', e => { if (LP.open && !e.target.closest
 // ボタンから選ぶ
 function renderLinkList(){
   const items = linkCandidates($('#linkQ').value, 60);
-  $('#linkList').innerHTML = items.length ? items.map(n => `<div class="it" data-id="${esc(n.id)}">${ic('doc', 15)} ${esc(n.title || '無題のノート')}<small>${esc(notebookName(n.notebookId))}</small></div>`).join('') : '<p class="hint">見つかりません</p>';
+  $('#linkList').innerHTML = items.length ? items.map(n => `<div class="it" data-id="${esc(n.id)}">${ic(isBoard(n) ? 'board' : 'doc', 15)} ${esc(n.title || '無題のノート')}<small>${esc(notebookName(n.notebookId))}</small></div>`).join('') : '<p class="hint">見つかりません</p>';
 }
 function openLinkDlg(){ $('#linkQ').value = ''; renderLinkList(); $('#linkDlg').showModal(); setTimeout(() => $('#linkQ').focus(), 50); }
 $('#linkQ').addEventListener('input', renderLinkList);
-$('#linkList').addEventListener('click', e => { const it = e.target.closest('.it'); if (!it) return; $('#linkDlg').close(); insertNoteLink(it.dataset.id); });
+$('#linkList').addEventListener('click', e => { const it = e.target.closest('.it'); if (!it) return; $('#linkDlg').close(); if (KB.pick) { const f = KB.pick; KB.pick = null; f(it.dataset.id); } else insertNoteLink(it.dataset.id); });
 $('#linkClose').addEventListener('click', () => $('#linkDlg').close());
+$('#linkDlg').addEventListener('close', () => { setTimeout(() => { KB.pick = null; }, 0); });
 $('#linkDlg').addEventListener('click', e => { if (e.target === $('#linkDlg')) $('#linkDlg').close(); });
 
 /* ---------------- テンプレート ---------------- */
@@ -4112,7 +4210,7 @@ function conflictOriginal(n){
   }
   return o && !o.deleted ? o : null;
 }
-function updateConflictBar(n){ $('#conflictBar').hidden = !conflictOriginal(n); }
+function updateConflictBar(n){ $('#conflictBar').hidden = isBoard(n) || !conflictOriginal(n); }
 const MG = {copy: null, orig: null, A: [], B: [], hunks: []};
 function openMerge(){
   const c = S.notes.get(S.currentId), o = conflictOriginal(c); if (!o) return;
@@ -4310,7 +4408,7 @@ async function backupAll(){
     const pkgNotes = notes.map(n => {
       let body = n.body; const used = [];
       for (const [id, aid] of idOf) if (body.includes(`data-att="${id}"`)) { body = body.split(`data-att="${id}"`).join(`data-att="${aid}"`); used.push(aid); }
-      return {id: n.id, title: n.title, body, notebookId: n.notebookId || null, tags: n.tags || [], created: n.created, updated: n.updated, pinned: n.pinned || 0, attachments: used};
+      return {id: n.id, title: n.title, body, notebookId: n.notebookId || null, tags: n.tags || [], created: n.created, updated: n.updated, pinned: n.pinned || 0, attachments: used, ...(isBoard(n) ? {type: 'board', board: n.board} : {})};
     });
     zip.file('notes.json', JSON.stringify({format: 'notebox-import', version: 2, source: 'NoteBox backup', exportedAt: new Date().toISOString(),
       notebooks: S.notebooks.filter(b => !b.deleted).map(b => ({id: b.id, name: b.name, parentId: b.parentId || null})), notes: pkgNotes, attachments: attList}));
@@ -4359,7 +4457,7 @@ async function buildNotesBackup(){
   const zip = new JSZip();
   zip.file('notes.json', JSON.stringify({format: 'notebox-import', version: 2, source: 'NoteBox auto backup', exportedAt: new Date().toISOString(),
     notebooks: S.notebooks.filter(b => !b.deleted).map(b => ({id: b.id, name: b.name, parentId: b.parentId || null})),
-    notes: notes.map(n => ({id: n.id, title: n.title, body: n.body, notebookId: n.notebookId || null, tags: n.tags || [], created: n.created, updated: n.updated, pinned: n.pinned || 0, archived: n.archived || 0, attachments: []})),
+    notes: notes.map(n => ({id: n.id, title: n.title, body: n.body, notebookId: n.notebookId || null, tags: n.tags || [], created: n.created, updated: n.updated, pinned: n.pinned || 0, archived: n.archived || 0, attachments: [], ...(isBoard(n) ? {type: 'board', board: n.board} : {})})),
     attachments: []}));
   return {blob: await zip.generateAsync({type: 'blob', compression: 'DEFLATE'}), count: notes.length};
 }
@@ -4487,6 +4585,179 @@ $('#vertView').querySelectorAll('[data-fs]').forEach(b => b.addEventListener('cl
 $('#vertBody').addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); e.currentTarget.scrollLeft -= e.deltaY; } }, {passive: false});
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#vertView').hidden) $('#vertView').hidden = true; });
 
+
+/* ---------------- カンバンボード ---------------- */
+const KB = {id: null, hist: [], edit: null};
+const kbNote = () => S.notes.get(KB.id);
+function kbUid(){ return 'k' + uid().replace(/-/g, '').slice(0, 10); }
+async function newBoard(){
+  const f = S.filter, t = now();
+  if (f.type === 'trash' || f.type === 'archive') S.filter = {type: 'boards', value: ''};
+  S.query = ''; $('#search').value = '';
+  if (saveTimer) await flushSave();
+  const board = normBoard({cols: [{id: kbUid(), name: 'やること'}, {id: kbUid(), name: '作業中'}, {id: kbUid(), name: '完了'}], cards: []});
+  const n = {id: uid(), type: 'board', board, title: '新しいボード', body: boardBody(board), text: '', notebookId: f.type === 'nb' && f.value && f.value !== TPL_NB ? f.value : null,
+    tags: f.type === 'tag' ? [f.value] : [], created: t, updated: t, deleted: false, dirty: true, fileId: null, syncedAt: null};
+  n.text = htmlToText(n.body);
+  await storeNote(n); closeDrawer(); await openNote(n.id);
+  titleEl.focus(); titleEl.select(); renderAll(); scheduleSync(4000);
+}
+// 変更はすべてここを通す（元に戻す用に直前の状態を残し、保存・同期する）
+function kbChange(fn, label){
+  const n = kbNote(); if (!n || n.deleted) return;
+  KB.hist.push(JSON.stringify(n.board)); if (KB.hist.length > 40) KB.hist.shift();
+  fn(n.board);
+  kbPersist(n);
+}
+function kbPersist(n){
+  n.body = boardBody(n.board); n.text = htmlToText(n.body); n.updated = now(); n.dirty = true; S.loadedUpdated = n.updated;
+  storeNote(n); renderKB(); renderList(); updateSaveState(n); updateChip(); scheduleSync(4000);
+}
+function kbUndo(){
+  const n = kbNote(); if (!n || !KB.hist.length) return;
+  n.board = JSON.parse(KB.hist.pop()); kbPersist(n); toast('元に戻しました');
+}
+function dueClass(d){ if (!d) return ''; const days = (new Date(d + 'T23:59') - new Date()) / 864e5; return days < 0 ? 'over' : days < 3 ? 'soon' : ''; }
+function renderKB(){
+  const n = kbNote(); if (!n) return;
+  const b = n.board, ro = !!n.deleted;
+  $('#kbUndo').disabled = !KB.hist.length; $('#kbAddCol').disabled = ro;
+  $('#kbBoard').innerHTML = b.cols.map((c, ci) => {
+    const cs = b.cards.filter(x => x.col === c.id);
+    return `<div class="kb-col" data-col="${esc(c.id)}"><div class="kb-head"><span class="nm" ${ro ? '' : 'contenteditable="true"'} spellcheck="false" data-ren="${esc(c.id)}">${esc(c.name)}</span>
+      <span class="ct">${cs.length}</span>${ro ? '' : `<button type="button" class="cm" data-colmenu="${esc(c.id)}" aria-label="列のメニュー">${ic('more', 16)}</button>`}</div>
+      <div class="kb-cards">${cs.map(x => `<div class="kb-card" data-card="${esc(x.id)}">${x.label ? `<i class="lb" style="background:${KB_LABELS[x.label]}"></i>` : ''}<div class="t">${esc(x.t || '（無題）')}</div>
+        ${x.memo ? `<div class="s">${esc(x.memo)}</div>` : ''}
+        ${x.links.length ? `<div class="lk">${x.links.map(id => { const t = S.notes.get(id); return `<button type="button" data-golink="${esc(id)}" class="${!t || t.deleted ? 'gone' : ''}" title="ノートを開く">${ic(isBoard(t) ? 'board' : 'doc', 12)}<span>${esc(t ? (t.title || '無題のノート') : '見つからないノート')}</span></button>`; }).join('')}</div>` : ''}
+        ${x.due ? `<span class="du ${dueClass(x.due)}">〆 ${esc(x.due.slice(5).replace('-', '/'))}</span>` : ''}</div>`).join('')}</div>
+      ${ro ? '' : `<button type="button" class="kb-add" data-addcard="${esc(c.id)}">＋ カードを追加</button>`}</div>`;
+  }).join('') + (ro ? '' : `<button type="button" class="kb-newcol" id="kbNewCol">＋ 列を追加</button>`);
+}
+function kbAddCol(){ kbChange(b => b.cols.push({id: kbUid(), name: '新しい列'})); const nm = [...$('#kbBoard').querySelectorAll('[data-ren]')].pop(); nm?.focus(); if (nm) { const r = document.createRange(); r.selectNodeContents(nm); getSelection().removeAllRanges(); getSelection().addRange(r); } }
+$('#kbAddCol').addEventListener('click', kbAddCol);
+$('#kbUndo').addEventListener('click', kbUndo);
+document.addEventListener('keydown', e => {
+  if (!document.body.hasAttribute('data-board') || !(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z' || e.shiftKey) return;
+  if (e.target.closest?.('input,textarea,[contenteditable="true"]') || document.querySelector('dialog[open]')) return;
+  e.preventDefault(); kbUndo();
+});
+// 列の名前
+$('#kbBoard').addEventListener('focusout', e => {
+  const el = e.target.closest?.('[data-ren]'); if (!el) return;
+  const n = kbNote(), c = n?.board.cols.find(x => x.id === el.dataset.ren), v = el.textContent.trim();
+  if (c && v && v !== c.name) kbChange(b => { b.cols.find(x => x.id === c.id).name = v.slice(0, 80); }); else if (c) el.textContent = c.name;
+});
+$('#kbBoard').addEventListener('keydown', e => { if (e.target.closest?.('[data-ren]') && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); e.target.blur(); } });
+$('#kbBoard').addEventListener('click', async e => {
+  const go = e.target.closest('[data-golink]');
+  if (go) { e.stopPropagation(); const t = S.notes.get(go.dataset.golink); if (!t) { toast('リンク先のノートが見つかりません'); return; } if (t.deleted) { toast('リンク先のノートはゴミ箱にあります'); } openNote(t.id); return; }
+  if (e.target.closest('#kbNewCol')) { kbAddCol(); return; }
+  const add = e.target.closest('[data-addcard]'); if (add) { openKbCard(null, add.dataset.addcard); return; }
+  const cm = e.target.closest('[data-colmenu]');
+  if (cm) {
+    const n = kbNote(), i = n.board.cols.findIndex(x => x.id === cm.dataset.colmenu), col = n.board.cols[i];
+    const k = await showMenu([{k: 'ren', label: '名前を変える'}, ...(i > 0 ? [{k: 'l', label: '左へ移動'}] : []), ...(i < n.board.cols.length - 1 ? [{k: 'r', label: '右へ移動'}] : []), {k: 'del', label: 'この列を削除', danger: true}]);
+    if (k === 'ren') { const el = $('#kbBoard').querySelector(`[data-ren="${CSS.escape(col.id)}"]`); el?.focus(); }
+    else if (k === 'l' || k === 'r') kbChange(b => { const j = i + (k === 'l' ? -1 : 1); [b.cols[i], b.cols[j]] = [b.cols[j], b.cols[i]]; });
+    else if (k === 'del') {
+      const cnt = n.board.cards.filter(x => x.col === col.id).length;
+      if (n.board.cols.length <= 1) { toast('列は1つ以上必要です'); return; }
+      if (cnt && !confirm(`列「${col.name}」と、中のカード${cnt}枚を削除しますか？（「元に戻す」で戻せます）`)) return;
+      kbChange(b => { b.cols = b.cols.filter(x => x.id !== col.id); b.cards = b.cards.filter(x => x.col !== col.id); });
+    }
+  }
+});
+// カードの編集
+function openKbCard(id, colId){
+  const n = kbNote(); if (!n) return;
+  const c = id ? n.board.cards.find(x => x.id === id) : {id: kbUid(), col: colId, t: '', memo: '', links: [], due: '', label: '', _new: true};
+  KB.edit = {...c, links: c.links.slice()};
+  const ro = !!n.deleted;
+  $('#kbDlgTitle').textContent = c._new ? 'カードを追加' : 'カード';
+  $('#kbT').value = c.t; $('#kbMemo').value = c.memo; $('#kbDue').value = c.due || '';
+  ['#kbT', '#kbMemo', '#kbDue'].forEach(s => $(s).readOnly = ro);
+  $('#kbDel').hidden = !!c._new || ro; $('#kbSave').hidden = ro; $('#kbAddLink').hidden = ro;
+  renderKbDlg(); $('#kbDlg').showModal();
+  if (c._new) setTimeout(() => $('#kbT').focus(), 30);
+}
+function renderKbDlg(){
+  const e = KB.edit;
+  $('#kbLinks').innerHTML = e.links.map((id, i) => { const t = S.notes.get(id); return `<span class="lnk">${ic(isBoard(t) ? 'board' : 'doc', 12)}<button type="button" data-open="${esc(id)}" style="padding:0">${esc(t ? (t.title || '無題のノート') : '見つからないノート')}</button><button type="button" data-unlink="${i}" aria-label="リンクを外す">✕</button></span>`; }).join('');
+  $('#kbLabel').innerHTML = `<button type="button" class="none ${e.label ? '' : 'on'}" data-lb="" title="色なし"></button>` + Object.entries(KB_LABELS).map(([k, v]) => `<button type="button" class="${e.label === k ? 'on' : ''}" data-lb="${k}" style="background:${v}"></button>`).join('');
+}
+$('#kbLabel').addEventListener('click', e => { const b = e.target.closest('[data-lb]'); if (!b || kbNote()?.deleted) return; KB.edit.label = b.dataset.lb; renderKbDlg(); });
+$('#kbLinks').addEventListener('click', e => {
+  const u = e.target.closest('[data-unlink]'); if (u) { KB.edit.links.splice(Number(u.dataset.unlink), 1); renderKbDlg(); return; }
+  const o = e.target.closest('[data-open]'); if (o && S.notes.has(o.dataset.open)) { $('#kbDlg').close(); openNote(o.dataset.open); }
+});
+$('#kbAddLink').addEventListener('click', () => {
+  KB.pick = id => { if (!KB.edit.links.includes(id)) KB.edit.links.push(id); renderKbDlg(); };
+  openLinkDlg();
+});
+$('#kbSave').addEventListener('click', () => {
+  const e = KB.edit, t = $('#kbT').value.trim();
+  if (!t && !e.links.length) { $('#kbT').focus(); toast('タイトルを入れてください'); return; }
+  e.t = t.slice(0, 500); e.memo = $('#kbMemo').value.slice(0, 5000); e.due = $('#kbDue').value || '';
+  const isNew = e._new; delete e._new;
+  kbChange(b => { if (isNew) b.cards.push(e); else { const i = b.cards.findIndex(x => x.id === e.id); if (i >= 0) b.cards[i] = e; } });
+  $('#kbDlg').close();
+});
+$('#kbDel').addEventListener('click', () => {
+  const id = KB.edit.id; $('#kbDlg').close();
+  kbChange(b => { b.cards = b.cards.filter(x => x.id !== id); }); toast('カードを削除しました（「元に戻す」で戻せます）');
+});
+// カードのドラッグ（マウスはそのまま、タッチは長押しでつかむ）
+let KD = null;
+$('#kbBoard').addEventListener('pointerdown', e => {
+  const card = e.target.closest('.kb-card'); if (!card || e.button > 0 || e.target.closest('[data-golink]')) return;
+  KD = {card, id: card.dataset.card, x0: e.clientX, y0: e.clientY, on: false, touch: e.pointerType !== 'mouse'};
+  if (KD.touch) KD.timer = setTimeout(() => { if (KD && !kbNote()?.deleted) kbStartDrag(); }, 300);
+});
+function kbStartDrag(){
+  const r = KD.card.getBoundingClientRect(); KD.on = true; KD.dx = KD.x0 - r.left; KD.dy = KD.y0 - r.top;
+  KD.ghost = KD.card.cloneNode(true); KD.ghost.classList.add('ghost'); KD.ghost.style.width = r.width + 'px'; document.body.appendChild(KD.ghost);
+  KD.ph = document.createElement('div'); KD.ph.className = 'kb-ph'; KD.ph.style.height = r.height + 'px';
+  KD.card.after(KD.ph); KD.card.classList.add('dragging'); navigator.vibrate?.(12); kbMove(KD.x0, KD.y0);
+}
+function kbMove(x, y){
+  KD.ghost.style.left = (x - KD.dx) + 'px'; KD.ghost.style.top = (y - KD.dy) + 'px';
+  const el = document.elementFromPoint(x, y), col = el?.closest('.kb-col');
+  $('#kbBoard').querySelectorAll('.kb-col.drop').forEach(c => c !== col && c.classList.remove('drop'));
+  const board = $('#kbBoard'), br = board.getBoundingClientRect();
+  if (x > br.right - 40) board.scrollLeft += 14; else if (x < br.left + 40) board.scrollLeft -= 14;
+  if (!col) return; col.classList.add('drop');
+  const list = col.querySelector('.kb-cards'), cards = [...list.querySelectorAll('.kb-card:not(.dragging)')];
+  const lr = list.getBoundingClientRect(); if (y > lr.bottom - 30) list.scrollTop += 10; else if (y < lr.top + 30) list.scrollTop -= 10;
+  const before = cards.find(c => { const r = c.getBoundingClientRect(); return y < r.top + r.height / 2; });
+  before ? list.insertBefore(KD.ph, before) : list.appendChild(KD.ph);
+}
+document.addEventListener('pointermove', e => {
+  if (!KD) return;
+  if (!KD.on) {
+    const far = Math.hypot(e.clientX - KD.x0, e.clientY - KD.y0) > 6;
+    if (KD.touch) { if (far) { clearTimeout(KD.timer); KD = null; } return; }
+    if (far && !kbNote()?.deleted) kbStartDrag(); else return;
+  }
+  e.preventDefault(); kbMove(e.clientX, e.clientY);
+}, {passive: false});
+document.addEventListener('touchmove', e => { if (KD?.on) e.preventDefault(); }, {passive: false});
+function kbEnd(cancel){
+  if (!KD) return; clearTimeout(KD.timer);
+  const d = KD; KD = null;
+  if (!d.on) { if (!cancel) openKbCard(d.id); return; }
+  d.ghost.remove(); $('#kbBoard').querySelectorAll('.kb-col.drop').forEach(c => c.classList.remove('drop'));
+  const col = d.ph.closest('.kb-col'), next = d.ph.nextElementSibling?.dataset?.card || null;
+  if (cancel || !col) { renderKB(); return; }
+  kbChange(b => {
+    const i = b.cards.findIndex(x => x.id === d.id); if (i < 0) return;
+    const [c] = b.cards.splice(i, 1); c.col = col.dataset.col;
+    const at = next ? b.cards.findIndex(x => x.id === next) : -1;
+    if (at >= 0) b.cards.splice(at, 0, c);
+    else { const last = b.cards.map(x => x.col).lastIndexOf(c.col); b.cards.splice(last + 1, 0, c); }
+  });
+}
+document.addEventListener('pointerup', () => kbEnd(false));
+document.addEventListener('pointercancel', () => kbEnd(true));
 /* ---------------- 縦書きで編集 ---------------- */
 // ノートごとに縦書き・横書きを記憶（端末ごと）。本文の中身は変えず、表示だけを縦書きにする
 const vertSet = () => { try { return new Set(JSON.parse(localStorage.getItem('nb.vertNotes') || '[]')); } catch { return new Set(); } };
@@ -4938,7 +5209,8 @@ async function duplicateNotes(ids){
     const t = now();
     const c = {...n, id: uid(), title: (n.title || '無題のノート') + '（コピー）', created: t, updated: t, deleted: false, archived: 0, pinned: 0,
       tags: (n.tags || []).slice(), dirty: true, fileId: null, syncedAt: null, rev: 0, claude: 0, cdoc: null};
-    if (id === S.currentId) { c.body = editorHTML(); c.title = (titleEl.value || '無題のノート') + '（コピー）'; c.text = htmlToText(c.body); c.tags = (S.editTags || []).slice(); }
+    if (isBoard(n)) c.board = JSON.parse(JSON.stringify(n.board));
+    else if (id === S.currentId) { c.body = editorHTML(); c.title = (titleEl.value || '無題のノート') + '（コピー）'; c.text = htmlToText(c.body); c.tags = (S.editTags || []).slice(); }
     await storeNote(c); made.push(c);
   }
   renderAll(); scheduleSync();
