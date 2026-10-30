@@ -2389,7 +2389,6 @@ function renderNav(){
     h += `<div style="height:6px"></div>`;
   }
   h += item('all', '', 'すべてのノート', live.filter(n => n.notebookId !== TPL_NB).length, '', 'notebook');
-  h += item('boards', '', 'カンバンボード', live.filter(isBoard).length, `<span class="more" id="addBoard" role="button" aria-label="新しいボード" title="新しいボード">＋</span>`, 'board');
   const nbActive = !S.query && f.type === 'nb';
   h += head('nb', 'ノートブック', activeNotebooks().length, nbActive, `<button class="mini" id="addNb" aria-label="ノートブックを追加">＋</button>`, 'data-nbroot="1"');
   const collapsed = getCollapsed();
@@ -2413,7 +2412,7 @@ function renderNav(){
     h += head('tag', 'タグ', tags.size, !S.query && f.type === 'tag');
     if (!secs.tag) for (const [t, c] of [...tags].sort((a,b) => a[0].localeCompare(b[0], 'ja'))) h += item('tag', t, '# ' + t, c).replace('<span class="lbl">', `<span class="tdot" style="--h:${tagHue(t)}"></span><span class="lbl">`);
   }
-  h += `<div class="nav-sec"><span></span></div>` + item('archive', '', 'アーカイブ', archivedN, '', 'archive') + item('trash', '', 'ゴミ箱', S.notes.size - all.length, '', 'trash');
+  h += `<div class="nav-sec"><span></span></div>` + item('boards', '', 'カンバンボード', live.filter(isBoard).length, `<span class="more" id="addBoard" role="button" aria-label="新しいボード" title="新しいボード">＋</span>`, 'board') + item('archive', '', 'アーカイブ', archivedN, '', 'archive') + item('trash', '', 'ゴミ箱', S.notes.size - all.length, '', 'trash');
   $('#nav').innerHTML = h;
   if (S.freshNav.size) {
     const pop = popPlan(S.freshNav, !S.syncing && document.visibilityState === 'visible' && (!isNarrow() || document.body.dataset.drawer === 'open'));
@@ -2511,7 +2510,7 @@ function renderSettings(){
   $('#syncInfo').textContent = info.join(' ／ ');
   renderSyncLog().catch(() => {}); renderAbk().catch(() => {});
 }
-const APP_VERSION = '2026.10.30-1';
+const APP_VERSION = '2026.10.30-2';
 function openSettings(){
   $('#autoReconn').checked = autoReconnOn();
   renderSettings(); closeDrawer(); $('#settings').showModal(); }
@@ -3046,6 +3045,7 @@ $('#forceUpdateBtn').addEventListener('click', forceUpdate);
 /* ---------------- バージョン情報と更新履歴 ---------------- */
 const CHANGELOG = [
   {d: '2026年10月30日', items: [
+    '左メニューの「カンバンボード」を「アーカイブ」の上へ移動',
     'カンバンボードを追加：左メニューの「カンバンボード」の＋で作成。列（やること／作業中／完了など）を自由に追加・名前変更・並べ替え・削除でき、カードはドラッグで別の列や順番へ移動（スマホ・タブレットは長押ししてから）',
     'カードにはタイトル・メモ・色・締め切りを付けられ、「ノートへのリンク」を追加するとカードからそのノートへ直接移動できます（リンクされたノートの下部にも参照元としてボードが出ます）',
     'ボードの操作は「元に戻す」（PCは Ctrl+Z）で取り消し可能。ボードは他のノートと同じようにドライブへ同期・検索・アーカイブ・ゴミ箱に対応',
@@ -4678,7 +4678,7 @@ function openKbCard(id, colId){
   ['#kbT', '#kbMemo', '#kbDue'].forEach(s => $(s).readOnly = ro);
   $('#kbDel').hidden = !!c._new || ro; $('#kbSave').hidden = ro; $('#kbAddLink').hidden = ro;
   renderKbDlg(); $('#kbDlg').showModal();
-  if (c._new) setTimeout(() => $('#kbT').focus(), 30);
+  if (c._new) setTimeout(() => { if (!document.activeElement?.closest('#kbDlg input,#kbDlg textarea')) $('#kbT').focus(); }, 30);
 }
 function renderKbDlg(){
   const e = KB.edit;
